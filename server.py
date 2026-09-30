@@ -237,27 +237,28 @@ def api_storage():
 
 
 def api_fundamentals():
-    def go():
-        out = {}
-        specs = {
-            "spot": ("pri/fut", "RNGWHHD", "daily", 260),
-            "production": ("prod/sum", "N9070US2", "monthly", 36),  # N9070US2 = U.S. DRY natural gas production (MMcf)
-            "lng_exports": ("move/expc", "N9133US2", "monthly", 36),
-            "mexico_exports": ("move/expc", "N9132MX2", "monthly", 36),
-        }
-        for k, (route, sid, freq, n) in specs.items():
-            try:
-                if DEMO:
-                    base = {"spot": 3.3, "production": 3.5e6, "lng_exports": 1.1e5, "mexico_exports": 2.2e5}[k]
-                    step = 1 if freq == "daily" else 30
-                    out[k] = [[(date.today() - timedelta(days=step * (n - i))).isoformat(),
-                               base * (1 + 0.1 * math.sin(i / 5) + i * .002)] for i in range(n)]
-                else:
-                    out[k] = eia(route, sid, freq, n)
-            except Exception as e:
-                out[k] = {"error": str(e)}
-        return out
-    return cached("fund", 3600, go)
+    specs = {
+        "spot": ("pri/fut", "RNGWHHD", "daily", 260),
+        "production": ("prod/sum", "N9070US2", "monthly", 36),  # N9070US2 = U.S. DRY natural gas production (MMcf)
+        "lng_exports": ("move/expc", "N9133US2", "monthly", 36),
+        "mexico_exports": ("move/expc", "N9132MX2", "monthly", 36),
+    }
+
+    def one(k):
+        route, sid, freq, n = specs[k]
+        if DEMO:
+            base = {"spot": 3.3, "production": 3.5e6, "lng_exports": 1.1e5, "mexico_exports": 2.2e5}[k]
+            step = 1 if freq == "daily" else 30
+            return [[(date.today() - timedelta(days=step * (n - i))).isoformat(),
+                     base * (1 + 0.1 * math.sin(i / 5) + i * .002)] for i in range(n)]
+        return eia(route, sid, freq, n)
+    out = {}
+    for k in specs:  # cached per series so one failure (e.g. a rate limit) is retried next request, not cached for an hour
+        try:
+            out[k] = cached("fund_" + k, 3600, lambda k=k: one(k))
+        except Exception as e:
+            out[k] = {"error": str(e)}
+    return out
 
 
 def api_steo():
@@ -858,7 +859,7 @@ def api_scores():
 ROUTES = {"/api/storage": api_storage, "/api/fundamentals": api_fundamentals, "/api/power": api_power,
           "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather,
           "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/dry": api_dry, "/api/scores": api_scores}
-CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals": "fund", "/api/power": ("power", "nuclear"),
+CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals": ("fund_spot", "fund_production", "fund_lng_exports", "fund_mexico_exports"), "/api/power": ("power", "nuclear"),
               "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather",
               "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu", "/api/dry": "dry"}
 
