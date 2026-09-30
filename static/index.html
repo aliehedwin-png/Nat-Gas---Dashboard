@@ -17,6 +17,11 @@ h1{font-size:16px;margin:0}#status{color:var(--mute);font-size:12px}
 .card h2{font-size:13px;margin:0 0 2px}.card .sub{color:var(--mute);font-size:12px;margin-bottom:6px}
 .wide{grid-column:1/-1}.up{color:var(--up)!important}.dn{color:var(--dn)!important}
 svg{width:100%;height:220px;display:block}svg text{fill:var(--mute);font-size:10px}
+.rel{margin:0 16px 10px}.rel .hd{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.rel table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;margin-top:6px}.rel th{color:var(--mute);font-weight:400;text-align:left}.rel td,.rel th{padding:3px 8px 3px 0}
+.rel .soon{color:var(--b);font-weight:600}.rel .chk{color:var(--a);font-weight:600}.rel .ap{color:var(--mute)}
+button.al{background:none;border:1px solid var(--line);color:var(--text);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:12px}button.al.on{border-color:var(--up);color:var(--up)}
+#toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:9}#toast div{background:var(--card);border:1px solid var(--a);border-radius:8px;padding:10px 14px;max-width:340px;box-shadow:0 4px 16px #0004}
 .err{color:var(--dn);font-size:12px;padding:20px 0}
 .lg{font-size:11px;color:var(--mute);display:flex;gap:12px;margin-top:4px;flex-wrap:wrap}.lg i{display:inline-block;width:10px;height:3px;margin-right:4px;vertical-align:middle}
 table.rv{border-collapse:collapse;font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}table.rv td,table.rv th{padding:2px 10px 2px 0;text-align:left;font-weight:400}table.rv th{color:var(--mute)}
@@ -24,6 +29,10 @@ table.rv{border-collapse:collapse;font-size:12px;margin-top:8px;font-variant-num
 <header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading…</div></header>
 <div class="banner" id="banner"></div>
 <div class="tiles" id="tiles"></div>
+<div class="card rel"><div class="hd"><div><h2>Data release schedule</h2><div class="sub">Times shown in your local zone; US sources follow Eastern Time. Holiday weeks can shift. (~) = approximate.</div></div>
+ <button class="al" id="alBtn">Enable alerts</button></div>
+ <table><thead><tr><th>Source</th><th>Next expected</th><th>In</th><th>Status</th></tr></thead><tbody id="relBody"></tbody></table></div>
+<div id="toast"></div>
 <div class="grid">
  <div class="card wide"><h2>Weather demand: GFS vs ECMWF (pop-weighted HDD, daily)</h2><div class="sub" id="wxsub"></div><svg id="wx"></svg>
   <div class="lg"><span><i style="background:var(--a)"></i>GFS</span><span><i style="background:var(--b)"></i>ECMWF IFS</span><span>past 7 days = model analysis; right of today = forecast</span></div></div>
@@ -86,6 +95,7 @@ const line=(rows,i=1)=>rows.map(r=>[T(r[0]),r[i]]);
 
 async function refresh(){
   const [cfg,st,fu,wx,pw,cf,rg,lng]=await Promise.all(['config','storage','fundamentals','weather','power','cftc','rigs','lng'].map(x=>get('/api/'+x)));
+  latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx};
   $('banner').style.display=cfg.demo||!cfg.eia?'block':'none';
   $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA_API_KEY not set — storage, spot, production, exports, power burn and LNG proxy are unavailable (free key: eia.gov/opendata).';
   const t=[];
@@ -136,5 +146,69 @@ async function refresh(){
   else['spot','prod','exp'].forEach(e=>errBox(e,fu.error));
   $('status').textContent='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min';
 }
+
+// ---------- Release schedule + alerts ----------
+const ET='America/New_York';
+const etParts=ms=>Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:ET,hourCycle:'h23',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).formatToParts(ms).map(x=>[x.type,+x.value]));
+const etOffset=ms=>{const p=etParts(ms);return Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second)-ms};
+const etWall=(y,m,d,h,mi)=>{const g=Date.UTC(y,m,d,h,mi);return g-etOffset(g-etOffset(g))};
+// next time after `from` that falls on one of `dows` (0=Sun) at h:mi Eastern
+function nextET(dows,h,mi,from){const p=etParts(from);
+  for(let i=0;i<15;i++){const dt=new Date(Date.UTC(p.year,p.month-1,p.day+i));
+    if(!dows.includes(dt.getUTCDay()))continue;
+    const t=etWall(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate(),h,mi);if(t>from)return t}}
+function nextUTC(hours,mi,from){const d=new Date(from);
+  for(let i=0;i<3;i++)for(const h of hours){const t=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+i,h,mi);if(t>from)return t}}
+const WK=[1,2,3,4,5];
+const RELEASES=[
+ {id:'storage',name:'EIA weekly storage report',api:'storage',next:f=>nextET([4],10,30,f),sig:d=>d.asof,
+  msg:d=>`Storage ${fmt(d.latest,0)} Bcf (${sgn(d.change,0)} w/w), ${sgn(d.vs_avg5,0)} vs 5-yr avg`},
+ {id:'rigs',name:'Baker Hughes rig count',api:'rigs',next:f=>nextET([5],13,0,f),sig:d=>d.asof,
+  msg:d=>`US gas rigs ${fmt(d.latest,0)} (${sgn(d.wow,0)} w/w)`},
+ {id:'cftc',name:'CFTC Commitments of Traders',api:'cftc',next:f=>nextET([5],15,30,f),sig:d=>d.asof,
+  msg:d=>`Managed money net ${fmt(d.latest.mm_net,0)} (${sgn(d.change,0)} w/w)`},
+ {id:'power',name:'EIA-930 power generation (daily)',api:'power',approx:true,next:f=>nextET(WK,11,0,f),sig:d=>d.asof,
+  msg:d=>`Power burn ${fmt(d.latest,1)} Bcf/d (7d avg ${fmt(d.avg7,1)})`},
+ {id:'gfs',name:'GFS model run (00/06/12/18Z)',api:'weather',approx:true,next:f=>nextUTC([4,10,16,22],0,f),sig:d=>JSON.stringify(d.totals),
+  msg:d=>`GFS 15d: ${fmt(d.totals.gfs_hdd,0)} HDD / ${fmt(d.totals.gfs_cdd,0)} CDD`},
+ {id:'ecmwf',name:'ECMWF IFS run (00/12Z)',api:'weather',approx:true,next:f=>nextUTC([8,20],0,f),sig:d=>JSON.stringify(d.totals),
+  msg:d=>`ECMWF 15d: ${fmt(d.totals.ecmwf_hdd,0)} HDD / ${fmt(d.totals.ecmwf_cdd,0)} CDD`},
+];
+let latest={};
+const state={};RELEASES.forEach(r=>state[r.id]={target:r.next(Date.now()),watch:null});
+let alerts=false;try{alerts=localStorage.getItem('ngAlerts')=='1'&&window.Notification&&Notification.permission=='granted'}catch(e){}
+function notify(title,body){
+  const t=document.createElement('div');t.innerHTML=`<b>${title}</b><br>${body}`;$('toast').appendChild(t);setTimeout(()=>t.remove(),12000);
+  if(alerts&&window.Notification&&Notification.permission=='granted')try{new Notification(title,{body})}catch(e){}}
+function paintAlertBtn(){const b=$('alBtn');b.textContent=alerts?'Alerts on':'Enable alerts';b.classList.toggle('on',alerts)}
+$('alBtn').onclick=async()=>{
+  if(alerts){alerts=false;try{localStorage.setItem('ngAlerts','0')}catch(e){}return paintAlertBtn()}
+  if(!window.Notification){notify('Alerts','Browser notifications unsupported; in-page alerts only.');return}
+  const p=Notification.permission=='granted'?'granted':await Notification.requestPermission();
+  alerts=p=='granted';try{localStorage.setItem('ngAlerts',alerts?'1':'0')}catch(e){}
+  if(!alerts)notify('Alerts','Notifications blocked in browser settings; in-page alerts only.');else notify('Alerts on','You will be notified when each release is due and when new data lands. Keep this tab open.');
+  paintAlertBtn()};
+const dur=ms=>{const s=Math.max(0,Math.round(ms/1000)),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d?`${d}d ${h}h`:h?`${h}h ${m}m`:m?`${m}m ${s%60}s`:`${s}s`};
+async function watchTick(r,st){const w=st.watch;if(!w)return;
+  if(Date.now()-w.start>45*60000){st.watch=null;notify(r.name,'No new data after 45 min. Will keep the normal refresh.');return}
+  if(Date.now()<w.nextPoll)return;w.nextPoll=Date.now()+60000;
+  const d=await get(`/api/${r.api}?fresh=1`);
+  if(d&&!d.error&&r.sig(d)!==w.baseline){st.watch=null;notify(`New data: ${r.name}`,r.msg(d));refresh()}}
+function scheduler(){
+  const now=Date.now();let rows=[];
+  for(const r of RELEASES){const st=state[r.id];
+    if(now>=st.target){ // release is due
+      const base=latest[r.id==='gfs'||r.id==='ecmwf'?'weather':r.api];
+      st.watch={start:now,nextPoll:now+30000,baseline:base&&!base.error?r.sig(base):null};
+      notify(`Due now: ${r.name}`,'Checking for the new numbers…');
+      st.target=r.next(now+1000)}
+    watchTick(r,st);
+    rows.push({r,st})}
+  rows.sort((a,b)=>a.st.target-b.st.target);
+  $('relBody').innerHTML=rows.map(({r,st})=>{const left=st.target-now;
+    const status=st.watch?'<span class="chk">checking for update…</span>':left<3600e3?'<span class="soon">due within the hour</span>':'';
+    return `<tr><td>${r.name}</td><td>${r.approx?'~ ':''}${new Date(st.target).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td class="${left<3600e3?'soon':''}">${dur(left)}</td><td>${status}</td></tr>`}).join('');
+}
+paintAlertBtn();scheduler();setInterval(scheduler,1000);
 refresh();setInterval(refresh,300000);
 </script></body></html>

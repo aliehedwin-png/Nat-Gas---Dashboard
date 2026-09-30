@@ -13,6 +13,21 @@ Live dashboard of the fundamental drivers of Henry Hub natural gas. Python stdli
 | Weather: GFS vs ECMWF pop-weighted HDD/CDD, 15-day totals | Open-Meteo | none |
 | Forecast updates: change in 15-day totals vs ~6h / ~24h ago | server snapshots in `data/wx_history.json` | keep server running |
 
+## Release alerts
+The "Data release schedule" card lists when each source is next expected, with a countdown. Click **Enable alerts** to get browser notifications:
+1. when a release becomes due, and
+2. once the server actually sees new data (it polls with `?fresh=1` every minute for up to 45 min), with the new numbers. The dashboard also refreshes itself.
+
+| Source | Expected |
+|---|---|
+| EIA storage report | Thu 10:30 ET |
+| Baker Hughes rigs | Fri 1:00 pm ET |
+| CFTC COT | Fri 3:30 pm ET |
+| EIA-930 power generation | weekdays ~11:00 ET (approx) |
+| GFS / ECMWF runs | ~04/10/16/22Z and ~08/20Z (approx, includes processing lag) |
+
+Alerts only fire while the dashboard tab is open. Schedules ignore federal holidays; a holiday week may shift a release by a day.
+
 ## Run
 ```
 export EIA_API_KEY=xxxx        # free: https://www.eia.gov/opendata/

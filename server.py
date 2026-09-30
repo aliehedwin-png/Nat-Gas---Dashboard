@@ -401,6 +401,10 @@ ROUTES = {"/api/storage": api_storage, "/api/fundamentals": api_fundamentals, "/
           "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather}
 
 
+CACHE_KEYS = {"/api/storage": "storage", "/api/fundamentals": "fund", "/api/power": "power",
+              "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather"}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=os.path.join(ROOT, "static"), **kw)
@@ -410,6 +414,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/config":
             return self.send_json({"demo": DEMO, "eia": bool(EIA_KEY)})
         if path in ROUTES:
+            if "fresh" in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query):
+                _cache.pop(CACHE_KEYS.get(path), None)  # bypass cache to catch a new release
             try:
                 return self.send_json(ROUTES[path]())
             except Exception as e:
