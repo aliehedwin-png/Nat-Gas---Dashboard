@@ -27,14 +27,24 @@ def cached(key, ttl, fn):
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < ttl:
         return hit[1]
-    val = fn()
+    try:
+        val = fn()
+    except Exception:
+        if hit:  # serve last good data rather than an error
+            return hit[1]
+        raise
     _cache[key] = (time.time(), val)
     return val
 
 
-def http_get(url, timeout=25):
-    with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=timeout) as r:
-        return r.read()
+def http_get(url, timeout=25, headers=UA):
+    for attempt in (1, 2, 3):  # retries: new TLS connections through proxies occasionally stall
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as r:
+                return r.read()
+        except (TimeoutError, OSError) as e:
+            if attempt == 3 or "HTTP Error" in str(e):
+                raise
 
 
 def http_json(url, timeout=25):
@@ -212,51 +222,58 @@ def api_cftc():
 
 
 # ---------- Baker Hughes rig counts (best-effort scrape of weekly xlsx) ----------
-def xlsx_rows(blob):
+def xlsx_sheet_rows(blob, sheet_name):
+    """Stream rows (lists of cell strings) of one worksheet from an xlsx blob."""
+    M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
     z = zipfile.ZipFile(io.BytesIO(blob))
-    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-    shared = []
-    if "xl/sharedStrings.xml" in z.namelist():
-        for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall("m:si", ns):
-            shared.append("".join(t.text or "" for t in si.iter("{%s}t" % ns["m"])))
-    sheet = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
-    rows = []
-    for row in sheet.iter("{%s}row" % ns["m"]):
-        vals = []
-        for c in row.findall("m:c", ns):
-            v = c.find("m:v", ns)
-            if v is None:
-                continue
-            vals.append(shared[int(v.text)] if c.get("t") == "s" else v.text)
-        rows.append(vals)
-    return rows
+    rels = {r.get("Id"): r.get("Target") for r in ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))}
+    target = next(rels[s.get(R + "id")] for s in ET.fromstring(z.read("xl/workbook.xml")).iter(M + "sheet")
+                  if s.get("name") == sheet_name)
+    shared = ["".join(t.text or "" for t in si.iter(M + "t"))
+              for si in ET.fromstring(z.read("xl/sharedStrings.xml")).findall(M + "si")]
+    for _, row in ET.iterparse(z.open("xl/" + target.lstrip("/").replace("xl/", "")), events=("end",)):
+        if row.tag == M + "row":
+            vals = []
+            for c in row.findall(M + "c"):
+                v = c.find(M + "v")
+                vals.append("" if v is None else shared[int(v.text)] if c.get("t") == "s" else v.text)
+            row.clear()
+            yield vals
+
+
+# rigcount.bakerhughes.com stalls/403s unknown and browser-like User-Agents but serves curl's
+BH_HEADERS = {"User-Agent": "curl/8.5.0", "Accept": "*/*"}
 
 
 def scrape_rigs():
-    page = http_get("https://rigcount.bakerhughes.com/na-rig-count").decode("utf8", "ignore")
-    m = re.search(r'href="([^"]+)"[^>]*>[^<]*Current Weekly Summary', page, re.I) or \
-        re.search(r'href="([^"]+\.xlsx?[^"]*)"', page, re.I)
-    if not m:
-        raise RuntimeError("Baker Hughes weekly summary link not found (page layout changed?)")
-    rows = xlsx_rows(http_get(urllib.parse.urljoin("https://rigcount.bakerhughes.com/", m.group(1)), 40))
-    in_us, found = False, {}
-    for r in rows:
-        if any("U.S. Breakout" in str(c) or "US Breakout" in str(c) for c in r):
-            in_us = True
-        if in_us and r and str(r[0]).strip() in ("Gas", "Oil") and str(r[0]).strip().lower() not in found:
-            nums = []
-            for c in r[1:]:
-                try:
-                    nums.append(float(c))
-                except ValueError:
-                    pass
-            if nums:
-                found[str(r[0]).strip().lower()] = nums[0]
-    if "gas" not in found:
-        raise RuntimeError("Could not parse gas rig count from Baker Hughes file")
-    today = date.today()
-    friday = today - timedelta(days=(today.weekday() - 4) % 7)
-    return friday.isoformat(), found
+    """Return {iso_date: {"gas": n, "oil": n}} of US weekly rig counts from Baker Hughes' report workbook."""
+    page = http_get("https://rigcount.bakerhughes.com/na-rig-count", 25, BH_HEADERS).decode("utf8", "ignore")
+    best = None
+    for href, title in re.findall(r'<a href="([^"]+)"[^>]*title="(\d\d-\d\d-\d{4}[^"]*Rig[ _]Count[ _]Report[^"]*\.xlsx)"', page, re.I):
+        mm, dd, yy = title[:10].split("-")
+        if best is None or (yy, mm, dd) > best[0]:
+            best = ((yy, mm, dd), href)
+    if not best:
+        raise RuntimeError("Baker Hughes weekly report link not found (page layout changed?)")
+    blob = http_get(urllib.parse.urljoin("https://rigcount.bakerhughes.com/", best[1]), 90, BH_HEADERS)
+    hist, cols = {}, None
+    for r in xlsx_sheet_rows(blob, "NAM Weekly"):
+        if cols is None:
+            if "DrillFor" in r and "US_PublishDate" in r:
+                cols = {k: r.index(k) for k in ("Country", "DrillFor", "US_PublishDate", "Rig Count Value")}
+            continue
+        if len(r) <= max(cols.values()) or r[cols["Country"]].upper() != "UNITED STATES":
+            continue
+        kind = r[cols["DrillFor"]].lower()
+        if kind not in ("gas", "oil"):
+            continue
+        d = (date(1899, 12, 30) + timedelta(days=int(float(r[cols["US_PublishDate"]])))).isoformat()
+        h = hist.setdefault(d, {"gas": 0.0, "oil": 0.0})
+        h[kind] += float(r[cols["Rig Count Value"]])
+    if not hist:
+        raise RuntimeError("No US rows parsed from Baker Hughes NAM Weekly sheet")
+    return hist
 
 
 def api_rigs():
@@ -270,8 +287,7 @@ def api_rigs():
                 hist[r["date"]] = {"gas": float(r["gas"]), "oil": float(r.get("oil") or 0)}
             err = None
             try:
-                d, vals = scrape_rigs()
-                hist[d] = {"gas": vals["gas"], "oil": vals.get("oil", 0)}
+                hist.update(scrape_rigs())
                 save_json("rigs.json", hist)
             except Exception as e:
                 err = str(e)
@@ -332,25 +348,31 @@ def api_weather():
     def go():
         today = date.today().isoformat()
         days = {}  # date -> {model: [hdd, cdd]}
-        for name, lat, lon, w in CITIES:
+        live = None
+        if not DEMO:  # one multi-location request = one TLS connection through the proxy
+            live = http_json("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
+                             "&daily=temperature_2m_mean&temperature_unit=fahrenheit&past_days=7&forecast_days=15"
+                             "&models=%s&timezone=auto" % (",".join(str(c[1]) for c in CITIES),
+                                                          ",".join(str(c[2]) for c in CITIES),
+                                                          ",".join(MODELS.values())), 20)
+            live = [x["daily"] for x in live]
+        for ci, (name, lat, lon, w) in enumerate(CITIES):
             if DEMO:
                 for m in MODELS:
                     for i in range(22):
                         d0 = date.today() - timedelta(days=7) + timedelta(days=i)
                         t = 58 + 22 * math.sin(d0.timetuple().tm_yday / 365 * 2 * math.pi - 1.9) + random.Random(i * 7 + lat).gauss(0, 2) + (1.5 if m == "gfs" else 0)
-                        s = days.setdefault(d0.isoformat(), {}).setdefault(m, [0, 0])
-                        s[0] += w * max(0, 65 - t); s[1] += w * max(0, t - 65)
+                        s_ = days.setdefault(d0.isoformat(), {}).setdefault(m, [0, 0])
+                        s_[0] += w * max(0, 65 - t); s_[1] += w * max(0, t - 65)
                 continue
-            d = http_json("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
-                          "&daily=temperature_2m_mean&temperature_unit=fahrenheit&past_days=7&forecast_days=15"
-                          "&models=%s&timezone=auto" % (lat, lon, ",".join(MODELS.values())))["daily"]
+            d = live[ci]
             for m, mid in MODELS.items():
                 for day, t in zip(d["time"], d.get("temperature_2m_mean_" + mid, [])):
                     if t is None:
                         continue
-                    s = days.setdefault(day, {}).setdefault(m, [0, 0])
-                    s[0] += w * max(0, 65 - t)
-                    s[1] += w * max(0, t - 65)
+                    s_ = days.setdefault(day, {}).setdefault(m, [0, 0])
+                    s_[0] += w * max(0, 65 - t)
+                    s_[1] += w * max(0, t - 65)
         rows = []
         for k, v in sorted(days.items()):
             rows.append({"date": k, "forecast": k > today,
