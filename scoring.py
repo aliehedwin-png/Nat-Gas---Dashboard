@@ -129,10 +129,10 @@ def compute(d, cfg=None):
     lng = d.get("lng")
     if good(lng) and lng.get("days"):
         vals = [v for _, v in lng["days"]]
-        if lng.get("source") == "eia_proxy":
+        if lng.get("source") in ("eia_proxy", "steo_estimate"):
             if len(vals) >= 4:
                 x = vals[-1] - mean(vals[-4:-1])
-                add("lng", tier(x, .5, 1.5), f"Latest month {vals[-1]:.1f} Bcf/d vs prior-3-month avg ({x:+.1f}) [exports proxy]")
+                add("lng", tier(x, .5, 1.5), f"Latest month {vals[-1]:.1f} Bcf/d vs prior-3-month avg ({x:+.1f}) [{'EIA estimate' if lng['source'] == 'steo_estimate' else 'exports proxy'}]")
         elif len(vals) >= 14:
             last7 = mean(vals[-7:]); prev = mean(vals[-37:-7] or vals[:-7])
             add("lng", tier(last7 - prev, .4, 1.0), f"7-day avg {last7:.1f} Bcf/d vs prior-30-day {prev:.1f} ({last7 - prev:+.1f})")

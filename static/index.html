@@ -5,7 +5,7 @@
 <style>
 :root{--bg:#f4f6f8;--card:#fff;--line:#d8dee4;--text:#1f2328;--mute:#656d76;--up:#1a7f37;--dn:#cf222e;--a:#0969da;--b:#9a6700;--c:#8250df}
 @media(prefers-color-scheme:dark){:root{--bg:#0f1419;--card:#171d25;--line:#2a3340;--text:#e6edf3;--mute:#8b98a7;--up:#3fb950;--dn:#f85149;--a:#58a6ff;--b:#d29922;--c:#a371f7}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,sans-serif}
+[hidden]{display:none!important}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,sans-serif}
 header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
 h1{font-size:16px;margin:0}#status{color:var(--mute);font-size:12px}
 .banner{background:var(--b);color:#000;padding:6px 16px;font-size:12px;display:none}
@@ -174,8 +174,10 @@ async function refresh(){
                   tile('Weekly change',sgn(st.change,0)+' Bcf',st.chg_avg5!=null?`5-yr avg ${sgn(st.chg_avg5,0)}`:'','storage_injection'));
   if(ok(wx)&&wx.dev)t.push(tile('15d weather vs normal',sgn(wx.dev.avg,0)+' DD',`GFS ${sgn(wx.dev.gfs,0)} · ECMWF ${sgn(wx.dev.ecmwf,0)}`,'wx_vs_normal'));
   if(ok(pw))t.push(tile('Power burn (7d)',fmt(pw.avg7,1)+' Bcf/d',pw.vs_ly7!=null?`${sgn(pw.vs_ly7,1)} vs last year`:'','power_burn'));
-  if(ok(lng)&&lng.days.length){const d=lng.days[lng.days.length-1];t.push(tile(lng.source=='eia_proxy'?'LNG exports (proxy)':'LNG feedgas',fmt(d[1],1)+' Bcf/d',d[0],'lng'))}
-  if(ok(nw)){const c=nw.latest,f=nw.stale?' ⚠ stale':'';t.push(tile('LNG feedgas (weekly)',fmt(c.lng,1)+' Bcf/d',`${sgn(c.lng_wow,1)} w/w · wk ${c.week_end}${f}`,'lng_weekly'),tile('Dry gas production (weekly)',fmt(c.dry,1)+' Bcf/d',`${sgn(c.dry_wow,1)} w/w · wk ${c.week_end}${f}`,'dry_production'))}
+  if(ok(lng)&&lng.days.length){const d=lng.days[lng.days.length-1],p=lng.days.length>1?lng.days[lng.days.length-2]:null,src=lng.source;
+    const lab=src=='steo_estimate'?'LNG exports, '+d[0].slice(0,7)+' (EIA est.)':src=='eia_proxy'?'LNG exports (monthly)':src=='ngwu'?'LNG feedgas (weekly)':src=='csv'?'LNG feedgas (daily)':'LNG feedgas';
+    t.push(tile(lab,fmt(d[1],1)+' Bcf/d',p&&src!='ngwu'?`${sgn(d[1]-p[1],1)} vs ${p[0].slice(0,7)}`:(lng.asof||d[0]),'lng'))}
+  if(ok(nw)&&!nw.stale){const c=nw.latest,f='';t.push(tile('LNG feedgas (weekly)',fmt(c.lng,1)+' Bcf/d',`${sgn(c.lng_wow,1)} w/w · wk ${c.week_end}${f}`,'lng_weekly'),tile('Dry gas production (weekly)',fmt(c.dry,1)+' Bcf/d',`${sgn(c.dry_wow,1)} w/w · wk ${c.week_end}${f}`,'dry_production'))}
   if(ok(rg))t.push(tile('US gas rigs',fmt(rg.latest,0),`${sgn(rg.wow,0)} w/w${rg.yoy!=null?' · '+sgn(rg.yoy,0)+' y/y':''}`,'rigs_gas'));
   if(ok(cf))t.push(tile('Managed money net',fmt(cf.latest.mm_net,0),`${cf.pctile_3y}${(n=>{const m=n%100;return m>=11&&m<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')})(cf.pctile_3y)} pctile (3y) · ${sgn(cf.change,0)} w/w`,'cftc'));
   if(ok(fu)&&Array.isArray(fu.spot)){const s=fu.spot,l=s[s.length-1][1];t.push(tile('Henry Hub spot',fmt(l,3),s[s.length-1][0],null))}
@@ -220,7 +222,8 @@ async function refresh(){
     const c=pw.clean;if(ok(c)){draw('cl',{series:[{data:line(c.last_year),color:'--mute',dash:'4 3',w:1.2},{data:line(c.days),color:'--a'}]});$('clsub').textContent=`${fmt(c.latest_gw,1)} GW now, ${sgn(c.delta_gw,1)} GW vs last year (≈${sgn(c.delta_bcfd,1)} Bcf/d of gas displaced)`}else errBox('cl',c&&c.error||'unavailable');
     const n=pw.nuclear;if(ok(n)){draw('nu',{series:[{data:line(n.last_year),color:'--mute',dash:'4 3',w:1.2},{data:line(n.days),color:'--a'}]});$('nusub').textContent=`${fmt(n.latest_pct,1)}% offline now (${fmt(n.latest_mw,0)} MW), ${sgn(n.delta_mw,0)} MW vs last year (7d avg)`}else errBox('nu',n&&n.error||'unavailable')}
   else{['pw','cl','nu'].forEach(e=>errBox(e,pw.error))}
-  if(ok(lng)){draw('lng',{series:[{data:line(lng.days),color:'--c',dots:lng.days.length<40}]});
+  if(ok(lng)){const ef=lng.est_from?T(lng.est_from):null,all=line(lng.days),act=ef?all.filter(p=>p[0]<ef):all,est=ef?all.filter(p=>p[0]>=ef):[];
+    draw('lng',{series:[{data:ef?[...act,...est.slice(0,0)]:act,color:'--c',dots:all.length<40},...(est.length?[{data:[act[act.length-1],...est],color:'--b',dash:'4 3',dots:true}]:[])]});
     $('lngsub').textContent=lng.source=='csv'?'From data/lng_feedgas.csv':lng.source=='demo'?'Demo':lng.note}else errBox('lng',lng.error);
   const s=(k,el,color)=>{const d=fu[k];if(!d||d.error)return errBox(el,d&&d.error||fu.error||'unavailable');draw(el,{series:[{data:line(d),color}]})};
   if(ok(fu)){s('spot','spot','--a');s('production','prod','--c');
@@ -241,6 +244,7 @@ async function refresh(){
   else{errBox('sp',steo.error);errBox('si',steo.error)}
 
   // weekly NGWU (latest week only)
+  ['nlBig','ndBig'].forEach(i=>{const c=$(i).closest('.card');if(c)c.hidden=!!(ok(nw)&&nw.stale)});
   if(ok(nw)){const c=nw.latest,warn=nw.stale?`⚠ Latest EIA page is for the week ending ${c.week_end} (${nw.age_days} days old), so it is not current: shown for reference and not scored. `:'';
     const big=(v,w,unit)=>`<div class="big ${nw.stale?'':''}">${fmt(v,1)} <span style="font-size:14px;color:var(--mute)">${unit}</span></div><div class="${bull(w)}" style="margin-top:4px">${sgn(w,1)} Bcf/d vs prior week</div>`;
     $('nlsub').textContent=warn+`Week ending ${c.week_end} (released ${c.release}) · pipeline deliveries to LNG export terminals`;

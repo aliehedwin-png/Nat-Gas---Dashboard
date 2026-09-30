@@ -11,7 +11,7 @@ Optional manual feeds / config (data/ directory):
   data/rigs.csv            date,gas,oil       extra/backfilled Baker Hughes weekly counts
   data/score_config.json   {"weights": {"wx_vs_normal": 20, "cftc": 0}}   see scoring.py
 """
-import csv, html, io, json, math, os, random, re, statistics, sys, threading, time
+import calendar, csv, html, io, json, math, os, random, re, statistics, sys, threading, time
 import urllib.parse, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
@@ -524,6 +524,7 @@ def api_rigs():
 
 # ---------- LNG feedgas (CSV drop-in; falls back to EIA monthly exports as a proxy) ----------
 def api_lng():
+    """LNG feedgas, best available: daily CSV > fresh EIA weekly page > EIA STEO current-month estimate > EIA monthly actuals."""
     def go():
         rows = load_csv("lng_feedgas.csv")
         if DEMO:
@@ -531,11 +532,33 @@ def api_lng():
                                                 for i in range(120)]}
         if rows:
             days = [[r["date"], float(r["bcfd"])] for r in rows if r.get("bcfd")][-180:]
-            return {"source": "csv", "days": days}
-        mo = eia("move/expc", "N9133US2", "monthly", 36)  # MMcf per month
-        days = [[p + "-15", v / 1000 / 30.4] for p, v in mo]
-        return {"source": "eia_proxy", "days": [[a, round(b, 2)] for a, b in days],
-                "note": "No data/lng_feedgas.csv found: showing EIA monthly LNG exports (Bcf/d) as a proxy."}
+            return {"source": "csv", "days": days, "asof": days[-1][0]}
+        try:  # weekly S&P figure via EIA, only if the page is actually current
+            nw = api_ngwu()
+            if not nw["stale"]:
+                c = nw["latest"]
+                return {"source": "ngwu", "days": [[c["week_end"], c["lng"]]], "asof": c["week_end"],
+                        "note": f"Weekly average, week ending {c['week_end']} (EIA Natural Gas Weekly Update / S&P Global)."}
+        except Exception:
+            pass
+        mo = eia("move/expc", "N9133US2", "monthly", 36)  # actual exports, MMcf per month
+        actual = [[p, v / 1000 / calendar.monthrange(int(p[:4]), int(p[5:7]))[1]] for p, v in mo]
+        est = []
+        try:  # STEO estimate for months after the last published actual, up to the current month
+            cur = date.today().strftime("%Y-%m")
+            steo = eia_fetch("steo", {"seriesId": ["NGEXPUS_LNG"]}, "monthly", 30, start=f"{actual[-1][0][:4]}-01")
+            est = sorted([r["period"], float(r["value"])] for r in steo
+                         if r.get("value") is not None and actual[-1][0] < r["period"] <= cur)
+        except Exception:
+            pass
+        days = [[p + "-15", round(v, 2)] for p, v in actual[-24:]]
+        if est:
+            days += [[p + "-15", round(v, 2)] for p, v in est]
+            return {"source": "steo_estimate", "days": days, "est_from": est[0][0] + "-15", "asof": est[-1][0],
+                    "note": (f"Monthly, not weekly. Actuals through {actual[-1][0]}; {est[0][0]} to {est[-1][0]} are EIA STEO estimates "
+                             "of LNG gross exports (approximate feedgas). Updates with each STEO and monthly export release.")}
+        return {"source": "eia_proxy", "days": days, "asof": actual[-1][0],
+                "note": f"Monthly LNG exports through {actual[-1][0]} (Bcf/d) as a proxy; no fresher free source available."}
     return cached("lng", 3600, go)
 
 
