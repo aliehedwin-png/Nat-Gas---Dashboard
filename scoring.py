@@ -24,9 +24,9 @@ METRICS = {
     "nuclear":            ("Nuclear outages vs last year", "Demand", 3),
     "lng":                ("LNG feedgas / exports trend", "Demand", 12),
     "lng_weekly":         ("LNG feedgas, weekly change (EIA NGWU)", "Demand", 0),
-    "dry_production":     ("Dry gas production, weekly change (EIA NGWU)", "Supply", 0),
+    "dry_production":     ("Dry gas production trend", "Supply", 4),
     "mexico":             ("Pipeline exports to Mexico y/y", "Demand", 3),
-    "production":         ("Marketed production y/y", "Supply", 8),
+    "production":         ("Dry gas production y/y (monthly actual)", "Supply", 8),
     "rigs_gas":           ("Gas rigs y/y", "Supply", 4),
     "cftc":               ("Managed money positioning (contrarian)", "Positioning", 4),
     "hurricane":          ("Gulf tropical threat", "Risk", 2),
@@ -155,9 +155,19 @@ def compute(d, cfg=None):
         if cur.get("lng_wow") is not None:
             add("lng_weekly", tier(cur["lng_wow"], .4, 1.0),
                 f"LNG pipeline receipts {cur['lng']:.1f} Bcf/d, {cur['lng_wow']:+.1f} w/w (week ending {cur['week_end']})")
-        if cur.get("dry_wow") is not None:
-            add("dry_production", tier(-cur["dry_wow"], .5, 1.5),
-                f"Dry production {cur['dry']:.1f} Bcf/d, {cur['dry_wow']:+.1f} w/w (week ending {cur['week_end']})")
+
+    dry = d.get("dry")
+    if good(dry) and dry.get("days"):
+        v = [x[1] for x in dry["days"]]
+        if dry.get("source") == "ngwu":
+            cur = (d.get("ngwu") or {}).get("latest") or {}
+            if cur.get("dry_wow") is not None:
+                add("dry_production", tier(-cur["dry_wow"], .5, 1.5),
+                    f"Dry production {cur['dry']:.1f} Bcf/d, {cur['dry_wow']:+.1f} w/w (week ending {cur['week_end']})")
+        elif dry.get("source") in ("steo_estimate", "eia_monthly") and len(v) >= 4:
+            x = v[-1] - mean(v[-4:-1])
+            add("dry_production", tier(-x, .5, 1.5), f"{dry['asof']} dry production {v[-1]:.1f} Bcf/d vs prior-3-month avg ({x:+.1f})"
+                + (" [EIA estimate]" if dry.get("source") == "steo_estimate" else ""))
 
     # ---- supply / rigs
     r = d.get("rigs")

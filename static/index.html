@@ -82,8 +82,8 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
  <h3 class="sec">Supply</h3>
  <div class="card"><h2>US gas rigs (Baker Hughes) <span data-s="rigs_gas"></span></h2><div class="sub" id="rgsub"></div><svg id="rg"></svg></div>
  <div class="card"><h2>Rigs by basin</h2><div class="sub">Gas basins charted; Permian/Eagle Ford (oil-directed, associated gas) in the table.</div><svg id="bs"></svg><div class="lg" id="bslg"></div><div id="bsTab"></div></div>
- <div class="card"><h2>Dry gas production, weekly (Bcf/d) <span data-s="dry_production"></span></h2><div class="sub" id="ndsub"></div><div id="ndBig"></div></div>
- <div class="card"><h2>Marketed production (MMcf / month) <span data-s="production"></span></h2><div class="sub" id="prsub">EIA monthly (1-2 month lag)</div><svg id="prod"></svg></div>
+ <div class="card"><h2>Dry gas production (Bcf/d) <span data-s="dry_production"></span></h2><div class="sub" id="ndsub"></div><svg id="dry"></svg></div>
+ <div class="card"><h2>Dry gas production, monthly actual (MMcf) <span data-s="production"></span></h2><div class="sub" id="prsub">EIA monthly (1-2 month lag)</div><svg id="prod"></svg></div>
  <div class="card"><h2>EIA STEO: marketed production outlook (Bcf/d)</h2><div class="sub">Monthly STEO; dashed line = current month, right of it = forecast</div><svg id="sp"></svg></div>
  <div class="card"><h2>EIA STEO: working gas inventory outlook (Bcf)</h2><div class="sub">End-of-month</div><svg id="si"></svg></div>
  <div class="card"><h2>Henry Hub spot ($/MMBtu)</h2><div class="sub">EIA daily (reference only, not scored)</div><svg id="spot"></svg></div>
@@ -157,9 +157,9 @@ function applyScores(sc){
 
 // ---------- refresh ----------
 async function refresh(){
-  const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo','ngwu'];
+  const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo','ngwu','dry'];
   const res=await Promise.all(names.map(x=>get('/api/'+x)));
-  const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw]=res;
+  const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw,dry]=res;
   latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
   applyScores(await get('/api/scores'));
   $('banner').style.display=cfg.demo||!cfg.eia?'block':'none';
@@ -177,7 +177,10 @@ async function refresh(){
   if(ok(lng)&&lng.days.length){const d=lng.days[lng.days.length-1],p=lng.days.length>1?lng.days[lng.days.length-2]:null,src=lng.source;
     const lab=src=='steo_estimate'?'LNG exports, '+d[0].slice(0,7)+' (EIA est.)':src=='eia_proxy'?'LNG exports (monthly)':src=='ngwu'?'LNG feedgas (weekly)':src=='csv'?'LNG feedgas (daily)':'LNG feedgas';
     t.push(tile(lab,fmt(d[1],1)+' Bcf/d',p&&src!='ngwu'?`${sgn(d[1]-p[1],1)} vs ${p[0].slice(0,7)}`:(lng.asof||d[0]),'lng'))}
-  if(ok(nw)&&!nw.stale){const c=nw.latest,f='';t.push(tile('LNG feedgas (weekly)',fmt(c.lng,1)+' Bcf/d',`${sgn(c.lng_wow,1)} w/w · wk ${c.week_end}${f}`,'lng_weekly'),tile('Dry gas production (weekly)',fmt(c.dry,1)+' Bcf/d',`${sgn(c.dry_wow,1)} w/w · wk ${c.week_end}${f}`,'dry_production'))}
+  if(ok(dry)&&dry.days.length){const d=dry.days[dry.days.length-1],p=dry.days.length>1?dry.days[dry.days.length-2]:null,src=dry.source;
+    const lab=src=='steo_estimate'?'Dry gas production, '+d[0].slice(0,7)+' (EIA est.)':src=='ngwu'?'Dry gas production (weekly)':'Dry gas production (monthly)';
+    t.push(tile(lab,fmt(d[1],1)+' Bcf/d',p&&src!='ngwu'?`${sgn(d[1]-p[1],1)} vs ${p[0].slice(0,7)}`:(dry.asof||d[0]),'dry_production'))}
+  if(ok(nw)&&!nw.stale){const c=nw.latest,f='';t.push(tile('LNG feedgas (weekly)',fmt(c.lng,1)+' Bcf/d',`${sgn(c.lng_wow,1)} w/w · wk ${c.week_end}${f}`,'lng_weekly'))}
   if(ok(rg))t.push(tile('US gas rigs',fmt(rg.latest,0),`${sgn(rg.wow,0)} w/w${rg.yoy!=null?' · '+sgn(rg.yoy,0)+' y/y':''}`,'rigs_gas'));
   if(ok(cf))t.push(tile('Managed money net',fmt(cf.latest.mm_net,0),`${cf.pctile_3y}${(n=>{const m=n%100;return m>=11&&m<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')})(cf.pctile_3y)} pctile (3y) · ${sgn(cf.change,0)} w/w`,'cftc'));
   if(ok(fu)&&Array.isArray(fu.spot)){const s=fu.spot,l=s[s.length-1][1];t.push(tile('Henry Hub spot',fmt(l,3),s[s.length-1][0],null))}
@@ -243,16 +246,18 @@ async function refresh(){
   if(ok(steo)){vline=T(steo.current_month+'-01');draw('sp',{series:[{data:line(steo.series.prod),color:'--c'}]});draw('si',{series:[{data:line(steo.series.inv),color:'--a'}]});vline=null}
   else{errBox('sp',steo.error);errBox('si',steo.error)}
 
+  // dry gas production (best available)
+  if(ok(dry)){const ef=dry.est_from?T(dry.est_from):null,all=line(dry.days),act=ef?all.filter(p=>p[0]<ef):all,est=ef?all.filter(p=>p[0]>=ef):[];
+    draw('dry',{series:[{data:act,color:'--a',dots:all.length<40},...(est.length?[{data:[act[act.length-1],...est],color:'--b',dash:'4 3',dots:true}]:[])]});
+    $('ndsub').textContent=dry.note||''}else errBox('dry',dry.error);
   // weekly NGWU (latest week only)
-  ['nlBig','ndBig'].forEach(i=>{const c=$(i).closest('.card');if(c)c.hidden=!!(ok(nw)&&nw.stale)});
+  ['nlBig'].forEach(i=>{const c=$(i).closest('.card');if(c)c.hidden=!!(ok(nw)&&nw.stale)});
   if(ok(nw)){const c=nw.latest,warn=nw.stale?`⚠ Latest EIA page is for the week ending ${c.week_end} (${nw.age_days} days old), so it is not current: shown for reference and not scored. `:'';
     const big=(v,w,unit)=>`<div class="big ${nw.stale?'':''}">${fmt(v,1)} <span style="font-size:14px;color:var(--mute)">${unit}</span></div><div class="${bull(w)}" style="margin-top:4px">${sgn(w,1)} Bcf/d vs prior week</div>`;
     $('nlsub').textContent=warn+`Week ending ${c.week_end} (released ${c.release}) · pipeline deliveries to LNG export terminals`;
     $('nlBig').innerHTML=big(c.lng,c.lng_wow,'Bcf/d');
-    $('ndsub').textContent=warn+`Week ending ${c.week_end} (released ${c.release}) · S&P Global via EIA`;
-    $('ndBig').innerHTML=big(c.dry,c.dry_wow,'Bcf/d')+`<table class="t" style="margin-top:10px"><tbody><tr><th>Exports to Mexico</th><td>${sgn(c.mexico_wow,1)} Bcf/d w/w</td></tr><tr><th>Net imports from Canada</th><td>${sgn(c.canada_wow,1)} Bcf/d w/w</td></tr></tbody></table>`;
     tblEl('nlTab',c.regions&&c.regions.length?`<table class="t" style="margin-top:10px"><thead><tr><th>Terminal region</th><th>w/w</th></tr></thead><tbody>${c.regions.map(r=>`<tr><td>${r.region}</td><td>${sgn(r.bcfd,1)} Bcf/d (${sgn(r.pct,1)}%)</td></tr>`).join('')}</tbody></table>`:'')}
-  else{tblEl('nlBig','',nw.error);tblEl('ndBig','',nw.error)}
+  else{tblEl('nlBig','',nw.error)}
 
   // positioning & risk
   if(ok(cf)){const w=cf.weeks;draw('cf',{series:[{data:w.map(r=>[T(r.date),r.mm_net]),color:'--a',w:2},{data:w.map(r=>[T(r.date),r.prod_net]),color:'--c',w:1.2},{data:w.map(r=>[T(r.date),r.swap_net]),color:'--b',w:1.2}]});

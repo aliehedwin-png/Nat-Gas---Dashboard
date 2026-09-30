@@ -241,7 +241,7 @@ def api_fundamentals():
         out = {}
         specs = {
             "spot": ("pri/fut", "RNGWHHD", "daily", 260),
-            "production": ("prod/sum", "N9070US2", "monthly", 36),
+            "production": ("prod/sum", "N9070US2", "monthly", 36),  # N9070US2 = U.S. DRY natural gas production (MMcf)
             "lng_exports": ("move/expc", "N9133US2", "monthly", 36),
             "mexico_exports": ("move/expc", "N9132MX2", "monthly", 36),
         }
@@ -562,6 +562,41 @@ def api_lng():
     return cached("lng", 3600, go)
 
 
+def api_dry():
+    """US dry gas production (Bcf/d), best available: fresh EIA weekly page > EIA monthly actuals + STEO current-month estimate."""
+    def go():
+        if DEMO:
+            return {"source": "demo", "days": [[f"{date.today().year - 2 + i // 12}-{i % 12 + 1:02d}-15", round(104 + i * .12 + 2 * math.sin(i / 3), 2)] for i in range(30)],
+                    "est_from": None, "asof": date.today().strftime("%Y-%m"), "note": "Demo"}
+        try:
+            nw = api_ngwu()
+            if not nw["stale"]:
+                c = nw["latest"]
+                return {"source": "ngwu", "days": [[c["week_end"], c["dry"]]], "asof": c["week_end"],
+                        "note": f"Weekly average, week ending {c['week_end']} (EIA Natural Gas Weekly Update / S&P Global)."}
+        except Exception:
+            pass
+        mo = eia("prod/sum", "N9070US2", "monthly", 36)  # actual dry production, MMcf per month
+        actual = [[p, v / 1000 / calendar.monthrange(int(p[:4]), int(p[5:7]))[1]] for p, v in mo]
+        est = []
+        try:
+            cur = date.today().strftime("%Y-%m")
+            steo = eia_fetch("steo", {"seriesId": ["NGPRPUS"]}, "monthly", 30, start=f"{actual[-1][0][:4]}-01")
+            est = sorted([r["period"], float(r["value"])] for r in steo
+                         if r.get("value") is not None and actual[-1][0] < r["period"] <= cur)
+        except Exception:
+            pass
+        days = [[p + "-15", round(v, 2)] for p, v in actual[-24:]]
+        if est:
+            days += [[p + "-15", round(v, 2)] for p, v in est]
+            return {"source": "steo_estimate", "days": days, "est_from": est[0][0] + "-15", "asof": est[-1][0],
+                    "note": (f"Monthly, not weekly. Actuals through {actual[-1][0]}; {est[0][0]} to {est[-1][0]} are EIA STEO estimates "
+                             "of dry gas production. Updates with each STEO and the monthly production release.")}
+        return {"source": "eia_monthly", "days": days, "est_from": None, "asof": actual[-1][0],
+                "note": f"Monthly actuals through {actual[-1][0]}; no fresher free source available."}
+    return cached("dry", 3600, go)
+
+
 # ---------- Weather: GFS vs ECMWF vs 10-yr normal, revisions ----------
 CITIES = [  # name, lat, lon, weight (rough gas-demand weighting)
     ("New York", 40.71, -74.01, 0.22), ("Chicago", 41.88, -87.63, 0.20),
@@ -812,7 +847,7 @@ def api_scores():
     d = {}
     for name, fn in (("storage", api_storage), ("weather", api_weather), ("power", api_power), ("rigs", api_rigs),
                      ("cftc", api_cftc), ("lng", api_lng), ("fund", api_fundamentals), ("tropics", api_tropics),
-                     ("prodwx", api_prodwx), ("ngwu", api_ngwu)):
+                     ("prodwx", api_prodwx), ("ngwu", api_ngwu), ("dry", api_dry)):
         try:
             d[name] = fn()
         except Exception as e:
@@ -822,10 +857,10 @@ def api_scores():
 
 ROUTES = {"/api/storage": api_storage, "/api/fundamentals": api_fundamentals, "/api/power": api_power,
           "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather,
-          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/scores": api_scores}
+          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/dry": api_dry, "/api/scores": api_scores}
 CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals": "fund", "/api/power": ("power", "nuclear"),
               "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather",
-              "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu"}
+              "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu", "/api/dry": "dry"}
 
 
 class Handler(SimpleHTTPRequestHandler):
