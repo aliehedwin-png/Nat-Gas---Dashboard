@@ -2,25 +2,62 @@
 """Natural gas fundamentals dashboard: static frontend + cached JSON API (stdlib only).
 
 Env:
-  EIA_API_KEY  free key from https://www.eia.gov/opendata/ (storage, spot, production, exports, power burn)
+  EIA_API_KEY  free key from https://www.eia.gov/opendata/ (storage, spot, production, exports, power, STEO)
   NG_DEMO=1    serve synthetic data (for UI development / offline use)
   PORT         default 8000
 
-Optional manual feeds (data/ directory, CSV with header):
-  data/lng_feedgas.csv   date,bcfd            daily LNG feedgas (no free API exists)
-  data/rigs.csv          date,gas,oil         extra/backfilled Baker Hughes weekly counts
+Optional manual feeds / config (data/ directory):
+  data/lng_feedgas.csv     date,bcfd          daily LNG feedgas (no free API exists)
+  data/rigs.csv            date,gas,oil       extra/backfilled Baker Hughes weekly counts
+  data/score_config.json   {"weights": {"wx_vs_normal": 20, "cftc": 0}}   see scoring.py
 """
-import csv, io, json, math, os, random, re, statistics, sys, time, urllib.parse, urllib.request, zipfile
+import csv, io, json, math, os, random, re, statistics, sys, threading, time
+import urllib.parse, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+import scoring
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 EIA_KEY = os.environ.get("EIA_API_KEY", "")
 DEMO = os.environ.get("NG_DEMO") == "1"
 UA = {"User-Agent": "Mozilla/5.0 (ng-dashboard)"}
-_cache = {}
+# rigcount.bakerhughes.com stalls/403s unknown and browser-like User-Agents but serves curl's
+BH_HEADERS = {"User-Agent": "curl/8.5.0", "Accept": "*/*"}
+
+_cache = {}   # key -> (timestamp, value); persisted to data/cache.json so restarts don't re-spend API quota
+_meta = {}    # key -> {"stale": bool, "error": str}
+_lock = threading.Lock()
+
+
+def save_json(name, obj):
+    os.makedirs(DATA, exist_ok=True)
+    tmp = os.path.join(DATA, name + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f)
+    os.replace(tmp, os.path.join(DATA, name))
+
+
+def load_json(name, default):
+    try:
+        with open(os.path.join(DATA, name)) as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def load_csv(name):
+    try:
+        with open(os.path.join(DATA, name), newline="") as f:
+            return list(csv.DictReader(f))
+    except Exception:
+        return None
+
+
+if not DEMO:
+    _cache.update({k: tuple(v) for k, v in load_json("cache.json", {}).items()})
 
 
 def cached(key, ttl, fn):
@@ -29,11 +66,19 @@ def cached(key, ttl, fn):
         return hit[1]
     try:
         val = fn()
-    except Exception:
-        if hit:  # serve last good data rather than an error
+    except Exception as e:
+        if hit:  # serve last good data rather than an error, but flag it
+            _meta[key] = {"stale": True, "error": str(e)}
             return hit[1]
         raise
-    _cache[key] = (time.time(), val)
+    _meta[key] = {"stale": False, "error": ""}
+    with _lock:
+        _cache[key] = (time.time(), val)
+        if not DEMO:
+            try:
+                save_json("cache.json", {k: list(v) for k, v in _cache.items()})
+            except Exception:
+                pass
     return val
 
 
@@ -51,37 +96,22 @@ def http_json(url, timeout=25):
     return json.loads(http_get(url, timeout))
 
 
-def load_json(name, default):
-    try:
-        with open(os.path.join(DATA, name)) as f:
-            return json.load(f)
-    except Exception:
-        return default
-
-
-def save_json(name, obj):
-    os.makedirs(DATA, exist_ok=True)
-    with open(os.path.join(DATA, name), "w") as f:
-        json.dump(obj, f)
-
-
-def load_csv(name):
-    try:
-        with open(os.path.join(DATA, name), newline="") as f:
-            return list(csv.DictReader(f))
-    except Exception:
-        return None
-
-
 # ---------- EIA ----------
-def eia_raw(path, facets, freq, length):
+def eia_fetch(path, facets, freq, length, cols=("value",), start=None):
     if not EIA_KEY:
         raise RuntimeError("EIA_API_KEY not set")
-    q = [("api_key", EIA_KEY), ("frequency", freq), ("data[0]", "value"),
-         ("sort[0][column]", "period"), ("sort[0][direction]", "desc"), ("length", str(length))]
+    q = [("api_key", EIA_KEY), ("frequency", freq), ("sort[0][column]", "period"),
+         ("sort[0][direction]", "desc"), ("length", str(length))]
+    q += [(f"data[{i}]", c) for i, c in enumerate(cols)]
+    if start:
+        q.append(("start", start))
     for k, vals in facets.items():
         q += [(f"facets[{k}][]", v) for v in vals]
-    rows = http_json(f"https://api.eia.gov/v2/{path}/data/?" + urllib.parse.urlencode(q))["response"]["data"]
+    return http_json(f"https://api.eia.gov/v2/{path}/data/?" + urllib.parse.urlencode(q), 30)["response"]["data"]
+
+
+def eia_raw(path, facets, freq, length):
+    rows = eia_fetch(path, facets, freq, length)
     return [(r["period"], float(r["value"])) for r in rows if r.get("value") is not None][::-1]
 
 
@@ -89,45 +119,121 @@ def eia(route, series, freq, length):
     return eia_raw("natural-gas/" + route, {"series": [series]}, freq, length)
 
 
+def shift_year(d, years):
+    try:
+        return d.replace(year=d.year + years)
+    except ValueError:
+        return d.replace(year=d.year + years, day=28)
+
+
+# ---------- Storage (total, regions, projection) ----------
+def storage_stats(rows, keep=52):
+    """rows: ascending [(iso_date, Bcf)] of weekly working gas."""
+    pts = [(date.fromisoformat(p), v) for p, v in rows]
+
+    def near(target):
+        for i, (d, _) in enumerate(pts):
+            if abs((d - target).days) <= 3:
+                return i
+        return None
+
+    def past_vals(d):
+        out = []
+        for k in range(1, 6):
+            j = near(shift_year(d, -k))
+            if j is not None:
+                out.append(pts[j][1])
+        return out
+
+    weeks = []
+    for d, v in pts[-keep:]:
+        past = past_vals(d)
+        weeks.append({"period": d.isoformat(), "value": v,
+                      "avg5": round(statistics.mean(past), 1) if past else None,
+                      "min5": min(past) if past else None, "max5": max(past) if past else None})
+    d, last = pts[-1]
+    change = last - pts[-2][1]
+    chgs = []
+    for k in range(1, 6):
+        j = near(shift_year(d, -k))
+        if j:
+            chgs.append(pts[j][1] - pts[j - 1][1])
+    avg5 = weeks[-1]["avg5"]
+    jy = near(shift_year(d, -1))
+    # end-of-season projection: add the 5-yr average remaining build/draw to today's level
+    if 4 <= d.month <= 10:
+        tgt = date(d.year, 10, 31)
+    elif d.month >= 11:
+        tgt = date(d.year + 1, 3, 31)
+    else:
+        tgt = date(d.year, 3, 31)
+    deltas, ends = [], []
+    for k in range(1, 6):
+        j, t = near(shift_year(d, -k)), near(shift_year(tgt, -k))
+        if j is not None and t is not None:
+            deltas.append(pts[t][1] - pts[j][1])
+            ends.append(pts[t][1])
+    proj = None
+    if deltas:
+        proj = {"date": tgt.isoformat(), "level": round(last + statistics.mean(deltas), 0),
+                "avg5_end": round(statistics.mean(ends), 0), "min5_end": min(ends), "max5_end": max(ends),
+                "kind": "end of injection season" if tgt.month == 10 else "end of withdrawal season"}
+    return {"weeks": weeks, "latest": last, "change": change,
+            "chg_avg5": round(statistics.mean(chgs), 1) if chgs else None,
+            "avg5": avg5, "vs_avg5": (last - avg5) if avg5 else None,
+            "pct_vs_avg5": ((last - avg5) / avg5 * 100) if avg5 else None,
+            "vs_year_ago": (last - pts[jy][1]) if jy is not None else None,
+            "asof": d.isoformat(), "projection": proj}
+
+
+REGION_SERIES = {  # key: (display name, EIA series)
+    "east": ("East", "NW2_EPG0_SWO_R31_BCF"), "midwest": ("Midwest", "NW2_EPG0_SWO_R32_BCF"),
+    "south_central": ("South Central", "NW2_EPG0_SWO_R33_BCF"), "mountain": ("Mountain", "NW2_EPG0_SWO_R34_BCF"),
+    "pacific": ("Pacific", "NW2_EPG0_SWO_R35_BCF"), "salt": ("  of which Salt", "NW2_EPG0_SSO_R33_BCF"),
+    "nonsalt": ("  of which Non-salt", "NW2_EPG0_SNO_R33_BCF"),
+}
+
+
+def demo_weekly(scale=1.0, this_year_bump=150):
+    today = date.today()
+    weeks = [today - timedelta(days=7 * i) for i in range(330)][::-1]
+    return [(w.isoformat(), scale * (2600 + 1200 * math.sin((w.timetuple().tm_yday - 100) / 365 * 2 * math.pi))
+             + (this_year_bump * scale if w.year == today.year else 0)) for w in weeks]
+
+
+def api_storage_regions():
+    def go():
+        regs = []
+        if DEMO:
+            grouped = {k: demo_weekly(s, 100 * s) for k, s in zip(REGION_SERIES, (.24, .28, .31, .07, .09, .07, .24))}
+        else:
+            raw = eia_fetch("natural-gas/stor/wkly", {"series": [s for _, s in REGION_SERIES.values()]},
+                            "weekly", 330 * len(REGION_SERIES))
+            by = {}
+            for r in raw:
+                if r.get("value") is not None:
+                    by.setdefault(r["series"], []).append((r["period"], float(r["value"])))
+            grouped = {k: sorted(by.get(s, [])) for k, (_, s) in REGION_SERIES.items()}
+        for k, (name, _) in REGION_SERIES.items():
+            if len(grouped[k]) > 60:
+                s = storage_stats(grouped[k], keep=1)
+                regs.append({"key": k, "name": name.strip(), "sub": name.startswith(" "), "latest": s["latest"],
+                             "change": s["change"], "vs_avg5": s["vs_avg5"], "pct_vs_avg5": s["pct_vs_avg5"],
+                             "vs_year_ago": s["vs_year_ago"]})
+        return regs
+    return cached("storage_regions", 3600, go)
+
+
 def api_storage():
     def go():
-        if DEMO:
-            today = date.today()
-            weeks = [today - timedelta(days=7 * i) for i in range(260)][::-1]
-            def lvl(d):
-                return 2600 + 1200 * math.sin((d.timetuple().tm_yday - 100) / 365 * 2 * math.pi)
-            rows = [(w.isoformat(), lvl(w) + (150 if w.year == today.year else 0)) for w in weeks]
-        else:
-            rows = eia("stor/wkly", "NW2_EPG0_SWO_R48_BCF", "weekly", 320)
-        by_year = {}
-        for p, v in rows:
-            d = date.fromisoformat(p)
-            by_year.setdefault(d.year, []).append((d, v))
-        latest_d = date.fromisoformat(rows[-1][0])
-
-        def shift(d, years):
-            try:
-                return d.replace(year=d.year + years)
-            except ValueError:
-                return d.replace(year=d.year + years, day=28)
-
-        recent = []
-        for p, v in rows[-52:]:
-            d = date.fromisoformat(p)
-            past = []
-            for yr in range(d.year - 5, d.year):
-                cand = [x for x in by_year.get(yr, []) if abs(shift(x[0], d.year - yr) - d).days <= 3]
-                if cand:
-                    past.append(cand[0][1])
-            recent.append({"period": p, "value": v,
-                           "avg5": round(statistics.mean(past), 1) if past else None,
-                           "min5": min(past) if past else None, "max5": max(past) if past else None})
-        last, prev = rows[-1][1], rows[-2][1]
-        yago = [v for p, v in rows if abs((date.fromisoformat(p) - shift(latest_d, -1)).days) <= 3]
-        return {"weeks": recent, "latest": last, "change": last - prev,
-                "vs_avg5": (last - recent[-1]["avg5"]) if recent[-1]["avg5"] else None,
-                "vs_year_ago": (last - yago[0]) if yago else None, "asof": rows[-1][0]}
-    return cached("storage", 3600, go)
+        rows = demo_weekly() if DEMO else eia("stor/wkly", "NW2_EPG0_SWO_R48_BCF", "weekly", 330)
+        return storage_stats(rows)
+    out = dict(cached("storage", 3600, go))
+    try:  # regions are cached separately so a failure here never poisons the headline numbers
+        out["regions"] = api_storage_regions()
+    except Exception as e:
+        out["regions"] = {"error": str(e)}
+    return out
 
 
 def api_fundamentals():
@@ -145,7 +251,7 @@ def api_fundamentals():
                     base = {"spot": 3.3, "production": 3.5e6, "lng_exports": 1.1e5, "mexico_exports": 2.2e5}[k]
                     step = 1 if freq == "daily" else 30
                     out[k] = [[(date.today() - timedelta(days=step * (n - i))).isoformat(),
-                               base * (1 + 0.1 * math.sin(i / 5))] for i in range(n)]
+                               base * (1 + 0.1 * math.sin(i / 5) + i * .002)] for i in range(n)]
                 else:
                     out[k] = eia(route, sid, freq, n)
             except Exception as e:
@@ -154,38 +260,129 @@ def api_fundamentals():
     return cached("fund", 3600, go)
 
 
-# ---------- Power burn (EIA-930 gas generation -> Bcf/d) ----------
-HEAT_RATE = 7.6  # MMBtu per MWh, fleet-average assumption
+def api_steo():
+    """EIA Short-Term Energy Outlook: marketed production, power-sector consumption, working gas inventory."""
+    def go():
+        ids = {"prod": "NGMPPUS", "power": "NGEPCON", "inv": "NGWGPUS"}
+        today = date.today()
+        if DEMO:
+            series = {}
+            for k, base in (("prod", 108), ("power", 36), ("inv", 3300)):
+                series[k] = [[f"{today.year - 1 + (i // 12)}-{i % 12 + 1:02d}",
+                              round(base * (1 + .03 * math.sin(i / 3) + .004 * i), 1)] for i in range(36)]
+        else:
+            raw = eia_fetch("steo", {"seriesId": list(ids.values())}, "monthly", 3 * 40, start=f"{today.year - 1}-01")
+            series = {}
+            for k, sid in ids.items():
+                series[k] = sorted([r["period"], float(r["value"])] for r in raw
+                                   if r["seriesId"] == sid and r.get("value") is not None)
+        return {"series": series, "current_month": today.strftime("%Y-%m"),
+                "units": {"prod": "Bcf/d", "power": "Bcf/d", "inv": "Bcf"}}
+    return cached("steo", 6 * 3600, go)
+
+
+# ---------- Power burn + generation mix + nuclear outages (EIA-930 / EIA outages) ----------
+HEAT_RATE = 7.6     # MMBtu per MWh, fleet-average assumption
 BTU_PER_CF = 1.037  # MMBtu per Mcf
+
+
+def mw_to_bcfd(mw):
+    """Continuous MW of generation -> Bcf/d of gas at the assumed heat rate."""
+    return mw * 24 * HEAT_RATE / BTU_PER_CF / 1e6
+
+
+def roll7(pairs):
+    out = []
+    for i in range(6, len(pairs)):
+        out.append([pairs[i][0], statistics.mean(v for _, v in pairs[i - 6:i + 1])])
+    return out
+
+
+def api_nuclear():
+    def go():
+        if DEMO:
+            rows = [((date.today() - timedelta(days=430 - i)).isoformat(),
+                     9000 + 6000 * math.exp(-((i % 365 - 90) / 40) ** 2) + random.Random(i).gauss(0, 300), 97000)
+                    for i in range(430)]
+        else:
+            raw = eia_fetch("nuclear-outages/us-nuclear-outages", {}, "daily", 430, cols=("outage", "capacity", "percentOutage"))
+            rows = [(r["period"], float(r["outage"]), float(r["capacity"])) for r in raw if r.get("outage") is not None][::-1]
+        by = {p: (o, c) for p, o, c in rows}
+        rec = rows[-90:]
+        ly = []
+        for p, o, c in rec:
+            k = (date.fromisoformat(p) - timedelta(days=364)).isoformat()
+            if k in by:
+                ly.append([p, round(by[k][0] / by[k][1] * 100, 2)])
+        last7 = statistics.mean(o for _, o, _ in rows[-7:])
+        ly7 = [by[k][0] for k in ((date.fromisoformat(p) - timedelta(days=364)).isoformat() for p, _, _ in rows[-7:]) if k in by]
+        delta = last7 - statistics.mean(ly7) if ly7 else None
+        p, o, c = rows[-1]
+        return {"days": [[p_, round(o_ / c_ * 100, 2)] for p_, o_, c_ in rec], "last_year": ly,
+                "latest_pct": round(o / c * 100, 2), "latest_mw": o, "asof": p,
+                "delta_mw": round(delta) if delta is not None else None,
+                "delta_bcfd": round(mw_to_bcfd(delta), 2) if delta is not None else None}
+    return cached("nuclear", 3600, go)
 
 
 def api_power():
     def go():
         if DEMO:
-            rows = []
+            by_fuel = {f: {} for f in ("NG", "WND", "SUN", "WAT", "NUC")}
             for i in range(430):
                 d = date.today() - timedelta(days=430 - i)
                 doy = d.timetuple().tm_yday
-                rows.append((d.isoformat(), 38 + 14 * math.exp(-((doy - 205) / 40) ** 2) + random.Random(i).gauss(0, 1.2)))
+                r = random.Random(i)
+                by_fuel["NG"][d.isoformat()] = (38 + 14 * math.exp(-((doy - 205) / 40) ** 2) + r.gauss(0, 1.2)) * 1.037 / HEAT_RATE * 1e6 / 1
+                by_fuel["WND"][d.isoformat()] = 1.8e6 + 4e5 * math.sin(doy / 20) + r.gauss(0, 1e5) + (2e5 if d.year == date.today().year else 0)
+                by_fuel["SUN"][d.isoformat()] = 4e5 + 5e5 * math.sin((doy - 80) / 365 * math.pi) ** 2 + (2e5 if d.year == date.today().year else 0)
+                by_fuel["WAT"][d.isoformat()] = 7e5 + r.gauss(0, 3e4)
+                by_fuel["NUC"][d.isoformat()] = 1.9e6
         else:
-            mwh = eia_raw("electricity/rto/daily-fuel-type-data",
-                          {"respondent": ["US48"], "fueltype": ["NG"], "timezone": ["Eastern"]}, "daily", 430)
-            rows = [(p, v * HEAT_RATE / BTU_PER_CF / 1e6) for p, v in mwh]  # MWh -> Bcf
-        by = dict(rows)
-        recent = rows[-90:]
-        ly = []
-        for p, v in recent:
-            d = date.fromisoformat(p)
-            k = (d - timedelta(days=364)).isoformat()
-            if k in by:
-                ly.append([p, by[k]])
-        last7 = statistics.mean(v for _, v in rows[-7:])
-        ly7 = [by[k] for k in ((date.fromisoformat(p) - timedelta(days=364)).isoformat() for p, _ in rows[-7:]) if k in by]
-        return {"days": [[p, round(v, 2)] for p, v in recent], "last_year": [[p, round(v, 2)] for p, v in ly],
-                "latest": round(rows[-1][1], 1), "avg7": round(last7, 1),
-                "vs_ly7": round(last7 - statistics.mean(ly7), 1) if ly7 else None, "asof": rows[-1][0],
-                "note": f"Estimated from EIA-930 US48 gas generation at {HEAT_RATE} MMBtu/MWh"}
-    return cached("power", 3600, go)
+            raw = eia_fetch("electricity/rto/daily-fuel-type-data",
+                            {"respondent": ["US48"], "fueltype": ["NG", "WND", "SUN", "WAT", "NUC"], "timezone": ["Eastern"]},
+                            "daily", 430 * 5)
+            by_fuel = {}
+            for r in raw:
+                if r.get("value") is not None:
+                    by_fuel.setdefault(r["fueltype"], {})[r["period"]] = float(r["value"])
+            if "NG" not in by_fuel:
+                raise RuntimeError("EIA returned no natural gas generation rows")
+        gas = sorted((p, v * HEAT_RATE / BTU_PER_CF / 1e6) for p, v in by_fuel["NG"].items())  # MWh -> Bcf
+        by = dict(gas)
+        recent = gas[-90:]
+
+        def ly_of(p):
+            return (date.fromisoformat(p) - timedelta(days=364)).isoformat()
+        ly = [[p, by[ly_of(p)]] for p, _ in recent if ly_of(p) in by]
+        last7 = statistics.mean(v for _, v in gas[-7:])
+        ly7 = [by[ly_of(p)] for p, _ in gas[-7:] if ly_of(p) in by]
+        out = {"days": [[p, round(v, 2)] for p, v in recent], "last_year": [[p, round(v, 2)] for p, v in ly],
+               "latest": round(gas[-1][1], 1), "avg7": round(last7, 1),
+               "vs_ly7": round(last7 - statistics.mean(ly7), 1) if ly7 else None, "asof": gas[-1][0],
+               "note": f"Estimated from EIA-930 US48 gas generation at {HEAT_RATE} MMBtu/MWh"}
+        # wind + solar + hydro (GW, 7-day rolling) vs last year
+        try:
+            dates = sorted(set(by_fuel["WND"]) & set(by_fuel["SUN"]) & set(by_fuel["WAT"]))
+            clean = [(p, (by_fuel["WND"][p] + by_fuel["SUN"][p] + by_fuel["WAT"][p]) / 24 / 1000) for p in dates]
+            sm = dict(roll7(clean))
+            cur = list(sm.items())[-90:]
+            lyc = [[p, sm[ly_of(p)]] for p, _ in cur if ly_of(p) in sm]
+            last_p, last_v = list(sm.items())[-1]
+            delta = (last_v - sm[ly_of(last_p)]) if ly_of(last_p) in sm else None
+            out["clean"] = {"days": [[p, round(v, 1)] for p, v in cur], "last_year": [[p, round(v, 1)] for p, v in lyc],
+                            "latest_gw": round(last_v, 1), "asof": last_p,
+                            "delta_gw": round(delta, 1) if delta is not None else None,
+                            "delta_bcfd": round(mw_to_bcfd(delta * 1000), 2) if delta is not None else None}
+        except Exception as e:
+            out["clean"] = {"error": str(e)}
+        return out
+    out = dict(cached("power", 3600, go))
+    try:  # separate cache so a nuclear-outage failure doesn't hide power burn
+        out["nuclear"] = api_nuclear()
+    except Exception as e:
+        out["nuclear"] = {"error": str(e)}
+    return out
 
 
 # ---------- CFTC positioning (Disaggregated, futures only, NYMEX Henry Hub) ----------
@@ -221,7 +418,7 @@ def api_cftc():
     return cached("cftc", 6 * 3600, go)
 
 
-# ---------- Baker Hughes rig counts (best-effort scrape of weekly xlsx) ----------
+# ---------- Baker Hughes rig counts (weekly report xlsx, total + by basin) ----------
 def xlsx_sheet_rows(blob, sheet_name):
     """Stream rows (lists of cell strings) of one worksheet from an xlsx blob."""
     M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -242,12 +439,8 @@ def xlsx_sheet_rows(blob, sheet_name):
             yield vals
 
 
-# rigcount.bakerhughes.com stalls/403s unknown and browser-like User-Agents but serves curl's
-BH_HEADERS = {"User-Agent": "curl/8.5.0", "Accept": "*/*"}
-
-
 def scrape_rigs():
-    """Return {iso_date: {"gas": n, "oil": n}} of US weekly rig counts from Baker Hughes' report workbook."""
+    """Return {iso_date: {"gas", "oil", "basin": {name: [gas, oil]}}} of US weekly rig counts."""
     page = http_get("https://rigcount.bakerhughes.com/na-rig-count", 25, BH_HEADERS).decode("utf8", "ignore")
     best = None
     for href, title in re.findall(r'<a href="([^"]+)"[^>]*title="(\d\d-\d\d-\d{4}[^"]*Rig[ _]Count[ _]Report[^"]*\.xlsx)"', page, re.I):
@@ -261,7 +454,7 @@ def scrape_rigs():
     for r in xlsx_sheet_rows(blob, "NAM Weekly"):
         if cols is None:
             if "DrillFor" in r and "US_PublishDate" in r:
-                cols = {k: r.index(k) for k in ("Country", "DrillFor", "US_PublishDate", "Rig Count Value")}
+                cols = {k: r.index(k) for k in ("Country", "Basin", "DrillFor", "US_PublishDate", "Rig Count Value")}
             continue
         if len(r) <= max(cols.values()) or r[cols["Country"]].upper() != "UNITED STATES":
             continue
@@ -269,18 +462,29 @@ def scrape_rigs():
         if kind not in ("gas", "oil"):
             continue
         d = (date(1899, 12, 30) + timedelta(days=int(float(r[cols["US_PublishDate"]])))).isoformat()
-        h = hist.setdefault(d, {"gas": 0.0, "oil": 0.0})
-        h[kind] += float(r[cols["Rig Count Value"]])
+        v = float(r[cols["Rig Count Value"]])
+        h = hist.setdefault(d, {"gas": 0.0, "oil": 0.0, "basin": {}})
+        h[kind] += v
+        b = h["basin"].setdefault(r[cols["Basin"]] or "Other", [0.0, 0.0])
+        b[0 if kind == "gas" else 1] += v
     if not hist:
         raise RuntimeError("No US rows parsed from Baker Hughes NAM Weekly sheet")
     return hist
 
 
+FOCUS_BASINS = [("Haynesville", "gas"), ("Marcellus", "gas"), ("Utica", "gas"), ("Permian", "total"), ("Eagle Ford", "total")]
+
+
 def api_rigs():
     def go():
         if DEMO:
-            hist = {(date.today() - timedelta(days=7 * i)).isoformat(): {"gas": 100 + round(8 * math.sin(i / 5)), "oil": 410}
-                    for i in range(60)}
+            hist = {}
+            for i in range(110):
+                d = (date.today() - timedelta(days=7 * i)).isoformat()
+                w = 6 * math.sin(i / 5)
+                hist[d] = {"gas": 100 + round(w) + 35, "oil": 410, "basin": {
+                    "Haynesville": [50 + round(w / 2), 0], "Marcellus": [22, 0], "Utica": [10, 0],
+                    "Permian": [1, 265 + round(w)], "Eagle Ford": [9, 41]}}
         else:
             hist = load_json("rigs.json", {})
             for r in load_csv("rigs.csv") or []:
@@ -296,10 +500,25 @@ def api_rigs():
         ds = sorted(hist)
         last = hist[ds[-1]]["gas"]
         prev = hist[ds[-2]]["gas"] if len(ds) > 1 else None
-        yago = [hist[d]["gas"] for d in ds if abs((date.fromisoformat(d) - (date.fromisoformat(ds[-1]) - timedelta(days=364))).days) <= 3]
+        ly = date.fromisoformat(ds[-1]) - timedelta(days=364)
+        ydate = next((d for d in ds if abs((date.fromisoformat(d) - ly).days) <= 3), None)
+        basins, basin_weeks = [], {}
+
+        def val(d, b, how):
+            g, o = hist[d].get("basin", {}).get(b, [0, 0])
+            return g if how == "gas" else g + o
+        if "basin" in hist[ds[-1]]:
+            for b, how in FOCUS_BASINS:
+                now = val(ds[-1], b, how)
+                wow = now - val(ds[-2], b, how) if len(ds) > 1 and "basin" in hist[ds[-2]] else None
+                yoy = now - val(ydate, b, how) if ydate and "basin" in hist[ydate] else None
+                basins.append({"basin": b, "metric": how, "latest": now, "wow": wow, "yoy": yoy,
+                               "yoy_pct": (yoy / (now - yoy) * 100) if yoy is not None and now - yoy else None})
+                basin_weeks[b] = [[d, val(d, b, how)] for d in ds[-104:] if "basin" in hist[d]]
         return {"weeks": [[d, hist[d]["gas"], hist[d].get("oil")] for d in ds[-104:]], "latest": last,
                 "wow": last - prev if prev is not None else None,
-                "yoy": last - yago[0] if yago else None, "asof": ds[-1], "points": len(ds)}
+                "yoy": last - hist[ydate]["gas"] if ydate else None, "asof": ds[-1], "points": len(ds),
+                "basins": basins, "basin_weeks": basin_weeks}
     return cached("rigs", 6 * 3600, go)
 
 
@@ -308,7 +527,7 @@ def api_lng():
     def go():
         rows = load_csv("lng_feedgas.csv")
         if DEMO:
-            return {"source": "demo", "days": [[(date.today() - timedelta(days=120 - i)).isoformat(), round(14 + 1.5 * math.sin(i / 9), 2)]
+            return {"source": "demo", "days": [[(date.today() - timedelta(days=120 - i)).isoformat(), round(14 + 1.5 * math.sin(i / 9) + i * .01, 2)]
                                                 for i in range(120)]}
         if rows:
             days = [[r["date"], float(r["bcfd"])] for r in rows if r.get("bcfd")][-180:]
@@ -320,7 +539,7 @@ def api_lng():
     return cached("lng", 3600, go)
 
 
-# ---------- Weather: GFS vs ECMWF, population-weighted HDD/CDD, forecast revisions ----------
+# ---------- Weather: GFS vs ECMWF vs 10-yr normal, revisions ----------
 CITIES = [  # name, lat, lon, weight (rough gas-demand weighting)
     ("New York", 40.71, -74.01, 0.22), ("Chicago", 41.88, -87.63, 0.20),
     ("Boston", 42.36, -71.06, 0.10), ("Atlanta", 33.75, -84.39, 0.12),
@@ -328,6 +547,43 @@ CITIES = [  # name, lat, lon, weight (rough gas-demand weighting)
     ("Minneapolis", 44.98, -93.27, 0.08), ("Philadelphia", 39.95, -75.17, 0.06),
 ]
 MODELS = {"gfs": "gfs_seamless", "ecmwf": "ecmwf_ifs025"}
+MODEL_KEYS = ["gfs_hdd", "gfs_cdd", "ecmwf_hdd", "ecmwf_cdd"]
+
+
+def locs_query():
+    return "latitude=%s&longitude=%s" % (",".join(str(c[1]) for c in CITIES), ",".join(str(c[2]) for c in CITIES))
+
+
+def api_normals():
+    """Population-weighted HDD/CDD normal by MM-DD from 10 years of Open-Meteo archive data (cached ~1 year)."""
+    def go():
+        if DEMO:
+            out = {}
+            for i in range(366):
+                d = date(2024, 1, 1) + timedelta(days=i)
+                t = 55 + 24 * math.sin(d.timetuple().tm_yday / 366 * 2 * math.pi - 1.9)
+                out[d.strftime("%m-%d")] = [round(max(0, 65 - t), 2), round(max(0, t - 65), 2)]
+            return out
+        y1 = date.today().year - 1
+        res = http_json("https://archive-api.open-meteo.com/v1/archive?%s&start_date=%d-01-01&end_date=%d-12-31"
+                        "&daily=temperature_2m_mean&temperature_unit=fahrenheit&timezone=auto" % (locs_query(), y1 - 9, y1), 90)
+        acc = {}
+        for (_, _, _, w), loc in zip(CITIES, res):
+            per = {}
+            for day, t in zip(loc["daily"]["time"], loc["daily"]["temperature_2m_mean"]):
+                if t is not None:
+                    per.setdefault(day[5:], []).append((max(0, 65 - t), max(0, t - 65)))
+            for k, v in per.items():
+                a = acc.setdefault(k, [0.0, 0.0])
+                a[0] += w * statistics.mean(x[0] for x in v)
+                a[1] += w * statistics.mean(x[1] for x in v)
+        keys = sorted(acc)
+        out = {}
+        for i, k in enumerate(keys):  # +/-3 day circular smoothing
+            win = [acc[keys[(i + j) % len(keys)]] for j in range(-3, 4)]
+            out[k] = [round(statistics.mean(x[0] for x in win), 2), round(statistics.mean(x[1] for x in win), 2)]
+        return out
+    return cached("normals", 365 * 86400, go)
 
 
 def wx_snapshot_history(now_totals):
@@ -335,12 +591,11 @@ def wx_snapshot_history(now_totals):
     now = time.time()
     if DEMO:
         r = random.Random(1)
-        hist = [{"ts": now - h * 3600, **{k: v + r.gauss(0, 4) for k, v in now_totals.items()}} for h in range(72, 0, -6)]
+        return [{"ts": now - h * 3600, **{k: v + r.gauss(0, 4) for k, v in now_totals.items()}} for h in range(72, 0, -6)]
     if not hist or now - hist[-1]["ts"] > 50 * 60:
         hist.append({"ts": now, **now_totals})
         hist = hist[-720:]
-        if not DEMO:
-            save_json("wx_history.json", hist)
+        save_json("wx_history.json", hist)
     return hist
 
 
@@ -350,18 +605,15 @@ def api_weather():
         days = {}  # date -> {model: [hdd, cdd]}
         live = None
         if not DEMO:  # one multi-location request = one TLS connection through the proxy
-            live = http_json("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
-                             "&daily=temperature_2m_mean&temperature_unit=fahrenheit&past_days=7&forecast_days=15"
-                             "&models=%s&timezone=auto" % (",".join(str(c[1]) for c in CITIES),
-                                                          ",".join(str(c[2]) for c in CITIES),
-                                                          ",".join(MODELS.values())), 20)
-            live = [x["daily"] for x in live]
+            live = [x["daily"] for x in http_json(
+                "https://api.open-meteo.com/v1/forecast?%s&daily=temperature_2m_mean&temperature_unit=fahrenheit"
+                "&past_days=7&forecast_days=15&models=%s&timezone=auto" % (locs_query(), ",".join(MODELS.values())), 20)]
         for ci, (name, lat, lon, w) in enumerate(CITIES):
             if DEMO:
                 for m in MODELS:
                     for i in range(22):
                         d0 = date.today() - timedelta(days=7) + timedelta(days=i)
-                        t = 58 + 22 * math.sin(d0.timetuple().tm_yday / 365 * 2 * math.pi - 1.9) + random.Random(i * 7 + lat).gauss(0, 2) + (1.5 if m == "gfs" else 0)
+                        t = 58 + 22 * math.sin(d0.timetuple().tm_yday / 365 * 2 * math.pi - 1.9) + random.Random(i * 7 + lat).gauss(0, 2) + (2.5 if m == "gfs" else 0)
                         s_ = days.setdefault(d0.isoformat(), {}).setdefault(m, [0, 0])
                         s_[0] += w * max(0, 65 - t); s_[1] += w * max(0, t - 65)
                 continue
@@ -373,36 +625,122 @@ def api_weather():
                     s_ = days.setdefault(day, {}).setdefault(m, [0, 0])
                     s_[0] += w * max(0, 65 - t)
                     s_[1] += w * max(0, t - 65)
+        try:
+            normals = api_normals()
+        except Exception:
+            normals = None
         rows = []
         for k, v in sorted(days.items()):
-            rows.append({"date": k, "forecast": k > today,
-                         **{m: {"hdd": round(v[m][0], 1), "cdd": round(v[m][1], 1)} for m in MODELS if m in v}})
+            row = {"date": k, "forecast": k > today,
+                   **{m: {"hdd": round(v[m][0], 1), "cdd": round(v[m][1], 1)} for m in MODELS if m in v}}
+            if normals:
+                n = normals.get(k[5:]) or normals.get("02-28")
+                row["normal"] = {"hdd": n[0], "cdd": n[1]}
+            rows.append(row)
         fc = [r for r in rows if r["forecast"]][:15]
         tot = {}
         for m in MODELS:
             tot[m + "_hdd"] = round(sum(r.get(m, {}).get("hdd", 0) for r in fc), 1)
             tot[m + "_cdd"] = round(sum(r.get(m, {}).get("cdd", 0) for r in fc), 1)
+        norm15, dev = None, None
+        if normals:
+            norm15 = {"hdd": round(sum(r["normal"]["hdd"] for r in fc), 1), "cdd": round(sum(r["normal"]["cdd"] for r in fc), 1)}
+            nd = norm15["hdd"] + norm15["cdd"]
+            dev = {m: round(tot[m + "_hdd"] + tot[m + "_cdd"] - nd, 1) for m in MODELS}
+            dev["avg"] = round(statistics.mean(dev[m] for m in MODELS), 1)
         hist = wx_snapshot_history(tot)
         now = time.time()
 
         def rev(hours):
             old = [h for h in hist if h["ts"] <= now - hours * 3600]
-            if not old:
-                return None
-            o = old[-1]
-            return {k: round(tot[k] - o[k], 1) for k in tot}
-        return {"days": rows, "totals": tot, "rev_6h": rev(6), "rev_24h": rev(24),
-                "history": [{"ts": h["ts"] * 1000, **{k: h[k] for k in tot if k in h}} for h in hist[-240:]],
+            return {k: round(tot[k] - old[-1][k], 1) for k in MODEL_KEYS} if old else None
+        return {"days": rows, "totals": tot, "normal15": norm15, "dev": dev, "rev_6h": rev(6), "rev_24h": rev(24),
+                "history": [{"ts": h["ts"] * 1000, **{k: h[k] for k in MODEL_KEYS if k in h}} for h in hist[-240:]],
                 "models": {"gfs": "GFS", "ecmwf": "ECMWF IFS"}}
     return cached("weather", 1800, go)
 
 
+# ---------- Producing-region freeze-off watch ----------
+PROD_REGIONS = [  # name, lat, lon, freeze-off threshold (deg F, daily minimum)
+    ("Appalachia (Marcellus/Utica)", 40.0, -80.0, 10), ("Permian", 31.99, -102.08, 20), ("Haynesville", 32.5, -93.75, 20),
+]
+
+
+def api_prodwx():
+    def go():
+        if DEMO:
+            res = [{"time": [(date.today() + timedelta(days=i)).isoformat() for i in range(15)],
+                    "temperature_2m_min": [round(35 - 25 * math.exp(-((i - 8) / 3) ** 2) + random.Random(i + n).gauss(0, 3), 1) for i in range(15)]}
+                   for n, _ in enumerate(PROD_REGIONS)]
+        else:
+            res = [x["daily"] for x in http_json(
+                "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&daily=temperature_2m_min"
+                "&temperature_unit=fahrenheit&forecast_days=15&timezone=auto" % (
+                    ",".join(str(r[1]) for r in PROD_REGIONS), ",".join(str(r[2]) for r in PROD_REGIONS)), 20)]
+        regions, worst, worst_n = [], None, 0
+        for (name, _, _, thr), d in zip(PROD_REGIONS, res):
+            mins = [[a, b] for a, b in zip(d["time"], d["temperature_2m_min"]) if b is not None]
+            n = sum(1 for _, t in mins if t <= thr)
+            regions.append({"name": name, "threshold": thr, "days": mins, "risk_days": n,
+                            "lowest": min(t for _, t in mins) if mins else None})
+            if n > worst_n:
+                worst, worst_n = name, n
+        return {"regions": regions, "max_risk_days": worst_n, "worst_region": worst}
+    return cached("prodwx", 3600, go)
+
+
+# ---------- Tropical threat (NHC) ----------
+GULF_CENTER = (27.5, -90.0)
+
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 6371 * 2 * math.asin(math.sqrt(a))
+
+
+def api_tropics():
+    def go():
+        if DEMO:
+            storms = [{"id": "al092026", "name": "Demo", "classification": "TS", "intensity": "50", "latitudeNumeric": 24.0,
+                       "longitudeNumeric": -86.0, "movementDir": 315, "movementSpeed": 9,
+                       "lastUpdate": datetime.now(timezone.utc).isoformat(), "publicAdvisory": {"url": "https://www.nhc.noaa.gov"}}]
+        else:
+            storms = http_json("https://www.nhc.noaa.gov/CurrentStorms.json", 15).get("activeStorms", [])
+        out = []
+        for s in storms:
+            lat, lon, kt = s["latitudeNumeric"], s["longitudeNumeric"], int(s.get("intensity") or 0)
+            atl = s["id"].lower().startswith("al")
+            out.append({"id": s["id"], "name": s["name"], "classification": s["classification"], "kt": kt,
+                        "mph": round(kt * 1.15), "lat": lat, "lon": lon,
+                        "dist_km": round(haversine_km(lat, lon, *GULF_CENTER)), "atlantic": atl,
+                        "in_gulf": atl and 17 <= lat <= 31 and -98 <= lon <= -80,
+                        "dir": s.get("movementDir"), "speed": s.get("movementSpeed"), "updated": s.get("lastUpdate"),
+                        "url": (s.get("publicAdvisory") or {}).get("url")})
+        out.sort(key=lambda x: x["dist_km"])
+        return {"storms": out, "asof": datetime.now(timezone.utc).isoformat()}
+    return cached("tropics", 1800, go)
+
+
+# ---------- Scores ----------
+def api_scores():
+    d = {}
+    for name, fn in (("storage", api_storage), ("weather", api_weather), ("power", api_power), ("rigs", api_rigs),
+                     ("cftc", api_cftc), ("lng", api_lng), ("fund", api_fundamentals), ("tropics", api_tropics),
+                     ("prodwx", api_prodwx)):
+        try:
+            d[name] = fn()
+        except Exception as e:
+            d[name] = {"error": str(e)}
+    return scoring.compute(d, load_json("score_config.json", {}))
+
+
 ROUTES = {"/api/storage": api_storage, "/api/fundamentals": api_fundamentals, "/api/power": api_power,
-          "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather}
-
-
-CACHE_KEYS = {"/api/storage": "storage", "/api/fundamentals": "fund", "/api/power": "power",
-              "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather"}
+          "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather,
+          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/scores": api_scores}
+CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals": "fund", "/api/power": ("power", "nuclear"),
+              "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather",
+              "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo"}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -412,10 +750,13 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/config":
-            return self.send_json({"demo": DEMO, "eia": bool(EIA_KEY)})
+            return self.send_json({"demo": DEMO, "eia": bool(EIA_KEY),
+                                   "stale": {k: v["error"] for k, v in _meta.items() if v.get("stale")}})
         if path in ROUTES:
             if "fresh" in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query):
-                _cache.pop(CACHE_KEYS.get(path), None)  # bypass cache to catch a new release
+                keys = CACHE_KEYS.get(path, ())  # bypass cache to catch a new release
+                for k in ([keys] if isinstance(keys, str) else keys):
+                    _cache.pop(k, None)
             try:
                 return self.send_json(ROUTES[path]())
             except Exception as e:

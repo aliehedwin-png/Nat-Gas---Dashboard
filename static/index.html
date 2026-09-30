@@ -9,142 +9,243 @@
 header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
 h1{font-size:16px;margin:0}#status{color:var(--mute);font-size:12px}
 .banner{background:var(--b);color:#000;padding:6px 16px;font-size:12px;display:none}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;padding:12px 16px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding:12px 16px}
 .tile,.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}
 .tile .l{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-.tile .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.tile .s{font-size:12px;font-variant-numeric:tabular-nums;color:var(--mute)}
+.tile .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.tile .s{font-size:12px;font-variant-numeric:tabular-nums;color:var(--mute)}.tile .bdw{margin-top:4px;min-height:20px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px;padding:0 16px 16px}
-.card h2{font-size:13px;margin:0 0 2px}.card .sub{color:var(--mute);font-size:12px;margin-bottom:6px}
+h3.sec{grid-column:1/-1;margin:10px 0 -2px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute)}
+.card h2{font-size:13px;margin:0 0 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.card .sub{color:var(--mute);font-size:12px;margin-bottom:6px}
 .wide{grid-column:1/-1}.up{color:var(--up)!important}.dn{color:var(--dn)!important}
 svg{width:100%;height:220px;display:block}svg text{fill:var(--mute);font-size:10px}
-.rel{margin:0 16px 10px}.rel .hd{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.rel table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;margin-top:6px}.rel th{color:var(--mute);font-weight:400;text-align:left}.rel td,.rel th{padding:3px 8px 3px 0}
-.rel .soon{color:var(--b);font-weight:600}.rel .chk{color:var(--a);font-weight:600}.rel .ap{color:var(--mute)}
-button.al{background:none;border:1px solid var(--line);color:var(--text);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:12px}button.al.on{border-color:var(--up);color:var(--up)}
-#toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:9}#toast div{background:var(--card);border:1px solid var(--a);border-radius:8px;padding:10px 14px;max-width:340px;box-shadow:0 4px 16px #0004}
 .err{color:var(--dn);font-size:12px;padding:20px 0}
 .lg{font-size:11px;color:var(--mute);display:flex;gap:12px;margin-top:4px;flex-wrap:wrap}.lg i{display:inline-block;width:10px;height:3px;margin-right:4px;vertical-align:middle}
-table.rv{border-collapse:collapse;font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}table.rv td,table.rv th{padding:2px 10px 2px 0;text-align:left;font-weight:400}table.rv th{color:var(--mute)}
+table.t{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;width:100%}table.t td,table.t th{padding:3px 10px 3px 0;text-align:left;font-weight:400;vertical-align:top}table.t th{color:var(--mute)}table.t tr.sub td:first-child{padding-left:12px;color:var(--mute)}
+.bd{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;cursor:help;border:1px solid transparent}
+.bd.bull{background:color-mix(in srgb,var(--up) 16%,transparent);color:var(--up)}.bd.bear{background:color-mix(in srgb,var(--dn) 16%,transparent);color:var(--dn)}.bd.neu{border-color:var(--line);color:var(--mute)}
+.bd.m2{border-color:currentColor}
+.score{grid-column:1/-1;display:grid;grid-template-columns:minmax(240px,320px) 1fr;gap:16px}
+@media(max-width:800px){.score{grid-template-columns:1fr}}
+.big{font-size:44px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.gauge{position:relative;height:10px;border-radius:5px;margin:14px 0 4px;background:linear-gradient(90deg,var(--dn),var(--line) 50%,var(--up))}
+.gauge i{position:absolute;top:-4px;width:4px;height:18px;border-radius:2px;background:var(--text);transform:translateX(-2px)}
+.gl{display:flex;justify-content:space-between;font-size:10px;color:var(--mute)}
+details summary{cursor:pointer;color:var(--mute);font-size:12px;margin-top:6px}
+.rel .hd{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.soon{color:var(--b);font-weight:600}.chk{color:var(--a);font-weight:600}
+button.al{background:none;border:1px solid var(--line);color:var(--text);border-radius:4px;padding:3px 10px;cursor:pointer;font-size:12px}button.al.on{border-color:var(--up);color:var(--up)}
+#toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:9}#toast div{background:var(--card);border:1px solid var(--a);border-radius:8px;padding:10px 14px;max-width:380px;box-shadow:0 4px 16px #0004}
+.note{font-size:11px;color:var(--mute);padding:0 16px 20px}
 </style></head><body>
 <header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading…</div></header>
 <div class="banner" id="banner"></div>
 <div class="tiles" id="tiles"></div>
-<div class="card rel"><div class="hd"><div><h2>Data release schedule</h2><div class="sub">Times shown in your local zone; US sources follow Eastern Time. Holiday weeks can shift. (~) = approximate.</div></div>
- <button class="al" id="alBtn">Enable alerts</button></div>
- <table><thead><tr><th>Source</th><th>Next expected</th><th>In</th><th>Status</th></tr></thead><tbody id="relBody"></tbody></table></div>
-<div id="toast"></div>
 <div class="grid">
- <div class="card wide"><h2>Weather demand: GFS vs ECMWF (pop-weighted HDD, daily)</h2><div class="sub" id="wxsub"></div><svg id="wx"></svg>
-  <div class="lg"><span><i style="background:var(--a)"></i>GFS</span><span><i style="background:var(--b)"></i>ECMWF IFS</span><span>past 7 days = model analysis; right of today = forecast</span></div></div>
- <div class="card"><h2>Forecast updates: 15-day HDD by snapshot</h2><div class="sub" id="rvsub"></div><svg id="rv"></svg><div id="rvtab"></div>
-  <div class="lg"><span><i style="background:var(--a)"></i>GFS</span><span><i style="background:var(--b)"></i>ECMWF</span></div></div>
- <div class="card"><h2>Working gas in storage (Bcf)</h2><div class="sub" id="stsub"></div><svg id="stor"></svg>
+ <h3 class="sec">Bullish / bearish score</h3>
+ <div class="card score"><div><div class="l" style="color:var(--mute);font-size:11px;text-transform:uppercase">Fundamental composite</div>
+   <div class="big" id="cmpV">–</div><div id="cmpL" style="font-weight:600;margin-top:4px"></div>
+   <div class="gauge"><i id="cmpM" style="left:50%"></i></div><div class="gl"><span>−100 bearish</span><span>0</span><span>bullish +100</span></div>
+   <div class="sub" id="cmpC" style="margin-top:8px"></div></div>
+  <div id="scTable"></div></div>
+
+ <h3 class="sec">Release schedule &amp; alerts</h3>
+ <div class="card wide rel"><div class="hd"><div><h2>Data release schedule</h2><div class="sub">Times in your local zone; US sources follow Eastern Time. Holiday weeks can shift. (~) = approximate. Alerts include each metric's score.</div></div>
+  <button class="al" id="alBtn">Enable alerts</button></div>
+  <table class="t"><thead><tr><th>Source</th><th>Next expected</th><th>In</th><th>Status</th></tr></thead><tbody id="relBody"></tbody></table></div>
+
+ <h3 class="sec">Weather</h3>
+ <div class="card wide"><h2>Weather demand: GFS vs ECMWF vs 10-yr normal <span data-s="wx_vs_normal"></span></h2><div class="sub" id="wxsub"></div><svg id="wx"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>GFS</span><span><i style="background:var(--b)"></i>ECMWF IFS</span><span><i style="background:var(--mute)"></i>10-yr normal</span><span>pop-weighted HDD+CDD per day; dashed line = today; right of it = forecast</span></div></div>
+ <div class="card"><h2>Forecast updates: 15-day degree-days by snapshot <span data-s="wx_revision"></span></h2><div class="sub" id="rvsub"></div><svg id="rv"></svg><div id="rvtab"></div>
+  <div class="lg"><span><i style="background:var(--a)"></i>GFS HDD</span><span><i style="background:var(--b)"></i>ECMWF HDD</span></div></div>
+ <div class="card"><h2>Producing-region freeze watch <span data-s="freeze"></span></h2><div class="sub" id="pwxsub"></div><svg id="pwx"></svg>
+  <div class="lg" id="pwxlg"></div></div>
+
+ <h3 class="sec">Storage</h3>
+ <div class="card"><h2>Working gas in storage (Bcf) <span data-s="storage_surplus"></span></h2><div class="sub" id="stsub"></div><svg id="stor"></svg>
   <div class="lg"><span><i style="background:var(--a)"></i>Current</span><span><i style="background:var(--mute)"></i>5-yr avg</span><span><i style="background:var(--line);height:8px"></i>5-yr range</span></div></div>
- <div class="card"><h2>Power burn (Bcf/d, estimated)</h2><div class="sub" id="pwsub"></div><svg id="pw"></svg>
+ <div class="card"><h2>Injection &amp; season projection <span data-s="storage_injection"></span> <span data-s="storage_projection"></span></h2><div class="sub" id="projsub"></div><div id="projTab"></div></div>
+ <div class="card"><h2>Storage by region (Bcf)</h2><div class="sub">Regional imbalances matter: South Central salt moves differently from the East.</div><div id="regTab"></div></div>
+
+ <h3 class="sec">Demand</h3>
+ <div class="card"><h2>Power burn (Bcf/d, estimated) <span data-s="power_burn"></span></h2><div class="sub" id="pwsub"></div><svg id="pw"></svg>
   <div class="lg"><span><i style="background:var(--a)"></i>This year</span><span><i style="background:var(--mute)"></i>Last year</span></div></div>
- <div class="card"><h2>CFTC positioning: Henry Hub futures (contracts)</h2><div class="sub" id="cfsub"></div><svg id="cf"></svg>
-  <div class="lg"><span><i style="background:var(--a)"></i>Managed money net</span><span><i style="background:var(--c)"></i>Producer/merchant net</span><span><i style="background:var(--b)"></i>Swap dealer net</span></div></div>
- <div class="card"><h2>Rig counts: US gas rigs (Baker Hughes)</h2><div class="sub" id="rgsub"></div><svg id="rg"></svg></div>
- <div class="card"><h2>LNG feedgas (Bcf/d)</h2><div class="sub" id="lngsub"></div><svg id="lng"></svg></div>
- <div class="card"><h2>Henry Hub spot ($/MMBtu)</h2><div class="sub">EIA daily</div><svg id="spot"></svg></div>
- <div class="card"><h2>Marketed production (MMcf / month)</h2><div class="sub">Supply</div><svg id="prod"></svg></div>
- <div class="card"><h2>Exports (MMcf / month)</h2><div class="sub">LNG + pipeline to Mexico</div><svg id="exp"></svg>
+ <div class="card"><h2>Wind + solar + hydro (GW, 7-day avg) <span data-s="renewables"></span></h2><div class="sub" id="clsub"></div><svg id="cl"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>This year</span><span><i style="background:var(--mute)"></i>Last year</span></div></div>
+ <div class="card"><h2>Nuclear outages (% of capacity) <span data-s="nuclear"></span></h2><div class="sub" id="nusub"></div><svg id="nu"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>This year</span><span><i style="background:var(--mute)"></i>Last year</span></div></div>
+ <div class="card"><h2>LNG feedgas (Bcf/d) <span data-s="lng"></span></h2><div class="sub" id="lngsub"></div><svg id="lng"></svg></div>
+ <div class="card"><h2>Exports (MMcf / month) <span data-s="mexico"></span></h2><div class="sub">LNG + pipeline to Mexico</div><svg id="exp"></svg>
   <div class="lg"><span><i style="background:var(--a)"></i>LNG</span><span><i style="background:var(--c)"></i>Mexico pipeline</span></div></div>
+
+ <h3 class="sec">Supply</h3>
+ <div class="card"><h2>US gas rigs (Baker Hughes) <span data-s="rigs_gas"></span></h2><div class="sub" id="rgsub"></div><svg id="rg"></svg></div>
+ <div class="card"><h2>Rigs by basin</h2><div class="sub">Gas basins charted; Permian/Eagle Ford (oil-directed, associated gas) in the table.</div><svg id="bs"></svg><div class="lg" id="bslg"></div><div id="bsTab"></div></div>
+ <div class="card"><h2>Marketed production (MMcf / month) <span data-s="production"></span></h2><div class="sub" id="prsub">EIA monthly (1-2 month lag)</div><svg id="prod"></svg></div>
+ <div class="card"><h2>EIA STEO: marketed production outlook (Bcf/d)</h2><div class="sub">Monthly STEO; dashed line = current month, right of it = forecast</div><svg id="sp"></svg></div>
+ <div class="card"><h2>EIA STEO: working gas inventory outlook (Bcf)</h2><div class="sub">End-of-month</div><svg id="si"></svg></div>
+ <div class="card"><h2>Henry Hub spot ($/MMBtu)</h2><div class="sub">EIA daily (reference only, not scored)</div><svg id="spot"></svg></div>
+
+ <h3 class="sec">Positioning &amp; risk</h3>
+ <div class="card"><h2>CFTC positioning: Henry Hub futures (contracts) <span data-s="cftc"></span></h2><div class="sub" id="cfsub"></div><svg id="cf"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>Managed money net</span><span><i style="background:var(--c)"></i>Producer/merchant net</span><span><i style="background:var(--b)"></i>Swap dealer net</span></div></div>
+ <div class="card"><h2>Tropical watch (NHC) <span data-s="hurricane"></span></h2><div class="sub" id="trsub"></div><div id="trTab"></div></div>
 </div>
+<div class="note">Scores are transparent rule-based heuristics (−2 strongly bearish … +2 strongly bullish for price), not forecasts. Hover a badge for the reasoning. Weights and thresholds: scoring.py, data/score_config.json. Not investment advice.</div>
+<div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
 const fmt=(n,d=2)=>n==null?'–':Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
 const sgn=(n,d=2)=>n==null?'–':(n>=0?'+':'')+fmt(n,d);
-const bull=n=>n==null||n===0?'':n>0?'up':'dn';           // positive is bullish for price
+const bull=n=>n==null||n===0?'':n>0?'up':'dn';
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const T=s=>+new Date(s);
-let W=640;const H=220,M={l:52,r:10,t:8,b:20};
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+let W=640,vline=null;const H=220,M={l:52,r:10,t:8,b:20};
 
-function draw(el,{series=[],bars=[],band=null,cat=null,yFmt=v=>Math.abs(v)>=1e6?(v/1e6).toFixed(2)+'M':Math.abs(v)>=1e4?Math.round(v/1e3)+'k':fmt(v,Math.abs(v)>=1000?0:Math.abs(v)>=10?1:2)}){
+function draw(el,{series=[],band=null,cat=null,yFmt=v=>Math.abs(v)>=1e6?(v/1e6).toFixed(2)+'M':Math.abs(v)>=1e4?Math.round(v/1e3)+'k':fmt(v,Math.abs(v)>=1000?0:Math.abs(v)>=10?1:2)}){
   okBox(el);const svg=$(el);W=svg.clientWidth||640;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML='';
-  const all=[...series.flatMap(s=>s.data),...bars.flatMap(s=>s.data)];
-  if(band)band.forEach(b=>all.push([b[0],b[1]],[b[0],b[2]]));
+  const all=series.flatMap(s=>s.data);if(band)band.forEach(b=>all.push([b[0],b[1]],[b[0],b[2]]));
   if(!all.length){svg.innerHTML='<text x=10 y=30>no data</text>';return}
   const xs=all.map(p=>p[0]),ys=all.map(p=>p[1]);
   let x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
-  if(bars.length)y0=Math.min(0,y0);
-  const pad=(y1-y0)*.08||1;y1+=pad;if(!bars.length||y0<0)y0-=pad;
+  const pad=(y1-y0)*.08||1;y1+=pad;y0-=pad;
   const sx=x=>M.l+(x1===x0?0.5:(x-x0)/(x1-x0))*(W-M.l-M.r), sy=y=>H-M.b-(y-y0)/(y1-y0)*(H-M.t-M.b);
   const el_=(n,a,t)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t)e.textContent=t;svg.appendChild(e);return e};
   for(let i=0;i<=4;i++){const v=y0+(y1-y0)*i/4,y=sy(v);el_('line',{x1:M.l,x2:W-M.r,y1:y,y2:y,stroke:css('--line'),'stroke-width':.5});el_('text',{x:M.l-4,y:y+3,'text-anchor':'end'},yFmt(v))}
   if(y0<0&&y1>0)el_('line',{x1:M.l,x2:W-M.r,y1:sy(0),y2:sy(0),stroke:css('--mute'),'stroke-width':.8});
-  const nt=W<500?2:4;for(let i=0;i<=nt;i++){if(x1===x0&&i!==nt/2)continue;const v=x0+(x1-x0)*i/nt;let t;
+  const nt=W<500?2:4;
+  for(let i=0;i<=nt;i++){if(x1===x0&&i!==nt/2)continue;const v=x0+(x1-x0)*i/nt;let t;
     if(cat)t=cat[Math.round(v)]??'';else{const d=new Date(v),span=x1-x0;t=span<2*864e5?d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):span>400*864e5?d.toLocaleDateString([],{month:'short',year:'2-digit'}):span<4*864e5?d.toLocaleString([],{weekday:'short',hour:'2-digit'}):d.toLocaleDateString([],{month:'short',day:'numeric'})}
     el_('text',{x:sx(v),y:H-5,'text-anchor':x1===x0?'middle':i==0?'start':i==nt?'end':'middle'},t)}
   if(band){const top=band.map(b=>`${sx(b[0])},${sy(b[2])}`),bot=band.slice().reverse().map(b=>`${sx(b[0])},${sy(b[1])}`);
     el_('polygon',{points:[...top,...bot].join(' '),fill:css('--line'),opacity:.6})}
-  bars.forEach(s=>{const bw=Math.max(2,(W-M.l-M.r)/s.data.length*.7);
-    s.data.forEach(p=>el_('rect',{x:sx(p[0])-bw/2,y:Math.min(sy(p[1]),sy(0)),width:bw,height:Math.abs(sy(p[1])-sy(0)),fill:css(s.color),opacity:p[2]?.45:1}))});
   series.forEach(s=>{if(!s.data.length)return;
     el_('polyline',{points:s.data.map(p=>`${sx(p[0])},${sy(p[1])}`).join(' '),fill:'none',stroke:css(s.color),'stroke-width':s.w||1.6,'stroke-dasharray':s.dash||'','stroke-linejoin':'round'});
     if(s.dots||s.data.length<3)s.data.forEach(p=>el_('circle',{cx:sx(p[0]),cy:sy(p[1]),r:2.5,fill:css(s.color)}))});
   if(vline!=null&&!cat&&vline>x0&&vline<x1)el_('line',{x1:sx(vline),x2:sx(vline),y1:M.t,y2:H-M.b,stroke:css('--mute'),'stroke-dasharray':'3 3','stroke-width':.8});
 }
-let vline=null;
 const get=u=>fetch(u).then(r=>r.json()).catch(e=>({error:String(e)}));
 const errBox=(el,m)=>{const svg=$(el);svg.innerHTML='';let e=svg.parentNode.querySelector(`.err[data-for="${el}"]`);if(!e){e=document.createElement('div');e.className='err';e.dataset.for=el;svg.after(e)}e.textContent=m;e.hidden=false;svg.style.display='none'};
 const okBox=el=>{const e=$(el).parentNode.querySelector(`.err[data-for="${el}"]`);if(e)e.hidden=true;$(el).style.display=''};
-const tile=(l,v,s,c='')=>`<div class="tile"><div class="l">${l}</div><div class="v">${v}</div><div class="s ${c}">${s||'&nbsp;'}</div></div>`;
 const ok=x=>x&&!x.error;
 const line=(rows,i=1)=>rows.map(r=>[T(r[0]),r[i]]);
+const tblEl=(el,html,err)=>{$(el).innerHTML=err?`<div class="err">${err}</div>`:html};
 
+// ---------- scores ----------
+let SC={},COMP=null,prevComp=null;
+const sg=n=>(n>0?'+':'')+n;
+function badge(id){const s=SC[id];if(!s)return '';const c=s.score>0?'bull':s.score<0?'bear':'neu';
+  return `<span class="bd ${c} m${Math.abs(s.score)}" title="${esc(s.why)}">${s.score>0?'▲':s.score<0?'▼':'●'} ${s.label} ${sg(s.score)}</span>`}
+function applyScores(sc){
+  SC={};if(!ok(sc)){COMP=null;return}
+  sc.items.forEach(i=>SC[i.id]=i);prevComp=COMP?COMP.value:prevComp;COMP=sc.composite;
+  document.querySelectorAll('[data-s]').forEach(e=>e.innerHTML=badge(e.dataset.s));
+  const c=COMP;$('cmpV').textContent=c.value==null?'–':sg(c.value);$('cmpV').className='big '+(c.value>=15?'up':c.value<=-15?'dn':'');
+  $('cmpL').textContent=c.label||'';$('cmpL').className=c.value>=15?'up':c.value<=-15?'dn':'';
+  $('cmpM').style.left=((c.value||0)+100)/2+'%';
+  $('cmpC').textContent=`Weighted average of ${sc.items.filter(i=>i.weight>0).length} scored metrics · ${Math.round(c.coverage*100)}% of weight available`;
+  const groups=['Weather','Storage','Demand','Supply','Positioning','Risk'];
+  const row=i=>`<tr><td>${i.metric}</td><td>${badge(i.id)}</td><td style="color:var(--mute)">${esc(i.why)}</td><td style="color:var(--mute)">${i.weight||'–'}</td></tr>`;
+  const main=sc.items.filter(i=>i.weight>0),det=sc.items.filter(i=>!i.weight);
+  $('scTable').innerHTML=`<table class="t"><thead><tr><th>Metric</th><th>Signal</th><th>Why</th><th>Wt</th></tr></thead><tbody>`+
+    groups.map(g=>main.filter(i=>i.group==g)).flat().map(row).join('')+`</tbody></table>`+
+    (det.length?`<details><summary>Regional &amp; basin detail (shown, not in composite)</summary><table class="t"><tbody>${det.map(row).join('')}</tbody></table></details>`:'');
+}
+
+// ---------- refresh ----------
 async function refresh(){
-  const [cfg,st,fu,wx,pw,cf,rg,lng]=await Promise.all(['config','storage','fundamentals','weather','power','cftc','rigs','lng'].map(x=>get('/api/'+x)));
-  latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx};
+  const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo'];
+  const res=await Promise.all(names.map(x=>get('/api/'+x)));
+  const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo]=res;
+  latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo};
+  applyScores(await get('/api/scores'));
   $('banner').style.display=cfg.demo||!cfg.eia?'block':'none';
-  $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA_API_KEY not set — storage, spot, production, exports, power burn and LNG proxy are unavailable (free key: eia.gov/opendata).';
+  $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA_API_KEY not set — storage, spot, production, exports, power, STEO and LNG proxy are unavailable (free key: eia.gov/opendata).';
+  const stale=Object.entries(cfg.stale||{});
+
+  // tiles
+  const tile=(l,v,s,id,c='')=>`<div class="tile"><div class="l">${l}</div><div class="v">${v}</div><div class="s ${c}">${s||'&nbsp;'}</div><div class="bdw">${id?badge(id):''}</div></div>`;
   const t=[];
-  if(ok(st))t.push(tile('Storage (Bcf)',fmt(st.latest,0),`${sgn(st.change,0)} w/w · wk ${st.asof}`,bull(-st.change)),
-                  tile('vs 5-yr avg',sgn(st.vs_avg5,0)+' Bcf',st.vs_year_ago!=null?`${sgn(st.vs_year_ago,0)} vs year ago`:'',bull(-st.vs_avg5)));
-  if(ok(fu)&&Array.isArray(fu.spot)){const s=fu.spot,l=s[s.length-1][1],p=s[s.length-2][1];t.push(tile('Henry Hub spot',fmt(l,3),`${sgn(l-p,3)} d/d`,bull(l-p)))}
-  if(ok(pw))t.push(tile('Power burn (7d avg)',fmt(pw.avg7,1)+' Bcf/d',pw.vs_ly7!=null?`${sgn(pw.vs_ly7,1)} vs last year`:'',bull(pw.vs_ly7)));
-  if(ok(rg))t.push(tile('US gas rigs',fmt(rg.latest,0),`${sgn(rg.wow,0)} w/w${rg.yoy!=null?' · '+sgn(rg.yoy,0)+' y/y':''}`,bull(-rg.wow)));
-  if(ok(lng)&&lng.days.length){const d=lng.days[lng.days.length-1];t.push(tile(lng.source=='eia_proxy'?'LNG exports (proxy)':'LNG feedgas',fmt(d[1],1)+' Bcf/d',d[0]))}
-  if(ok(cf))t.push(tile('Managed money net',fmt(cf.latest.mm_net,0),`${sgn(cf.change,0)} w/w · ${cf.pctile_3y}th pctile (3y)`,''));
-  if(ok(wx)){const T_=wx.totals,b=(T_.gfs_hdd+T_.ecmwf_hdd)/2,r=wx.rev_24h;
-    t.push(tile('15-day HDD (GFS/ECMWF avg)',fmt(b,0),r?`${sgn((r.gfs_hdd+r.ecmwf_hdd)/2,1)} vs 24h ago`:'building revision history…',r?bull((r.gfs_hdd+r.ecmwf_hdd)/2):''),
-           tile('GFS − ECMWF (15d HDD)',sgn(T_.gfs_hdd-T_.ecmwf_hdd,1),'model disagreement'))}
+  if(COMP&&COMP.value!=null)t.push(`<div class="tile"><div class="l">Composite score</div><div class="v ${bull(COMP.value)}">${sg(COMP.value)}</div><div class="s">${COMP.label}</div><div class="bdw"></div></div>`);
+  if(ok(st))t.push(tile('Storage (Bcf)',fmt(st.latest,0),`${sgn(st.vs_avg5,0)} vs 5-yr · wk ${st.asof}`,'storage_surplus'),
+                  tile('Weekly change',sgn(st.change,0)+' Bcf',st.chg_avg5!=null?`5-yr avg ${sgn(st.chg_avg5,0)}`:'','storage_injection'));
+  if(ok(wx)&&wx.dev)t.push(tile('15d weather vs normal',sgn(wx.dev.avg,0)+' DD',`GFS ${sgn(wx.dev.gfs,0)} · ECMWF ${sgn(wx.dev.ecmwf,0)}`,'wx_vs_normal'));
+  if(ok(pw))t.push(tile('Power burn (7d)',fmt(pw.avg7,1)+' Bcf/d',pw.vs_ly7!=null?`${sgn(pw.vs_ly7,1)} vs last year`:'','power_burn'));
+  if(ok(lng)&&lng.days.length){const d=lng.days[lng.days.length-1];t.push(tile(lng.source=='eia_proxy'?'LNG exports (proxy)':'LNG feedgas',fmt(d[1],1)+' Bcf/d',d[0],'lng'))}
+  if(ok(rg))t.push(tile('US gas rigs',fmt(rg.latest,0),`${sgn(rg.wow,0)} w/w${rg.yoy!=null?' · '+sgn(rg.yoy,0)+' y/y':''}`,'rigs_gas'));
+  if(ok(cf))t.push(tile('Managed money net',fmt(cf.latest.mm_net,0),`${cf.pctile_3y}${(n=>{const m=n%100;return m>=11&&m<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')})(cf.pctile_3y)} pctile (3y) · ${sgn(cf.change,0)} w/w`,'cftc'));
+  if(ok(fu)&&Array.isArray(fu.spot)){const s=fu.spot,l=s[s.length-1][1];t.push(tile('Henry Hub spot',fmt(l,3),s[s.length-1][0],null))}
   $('tiles').innerHTML=t.join('');
 
-  // weather models
+  // weather
   if(ok(wx)){
-    const d=wx.days;vline=T(new Date().toISOString().slice(0,10));
-    draw('wx',{series:[{data:d.filter(r=>r.gfs).map(r=>[T(r.date),r.gfs.hdd]),color:'--a'},{data:d.filter(r=>r.ecmwf).map(r=>[T(r.date),r.ecmwf.hdd]),color:'--b'}]});
-    vline=null;
-    const g=wx.totals;$('wxsub').textContent=`Next 15d — GFS ${fmt(g.gfs_hdd,0)} HDD / ${fmt(g.gfs_cdd,0)} CDD · ECMWF ${fmt(g.ecmwf_hdd,0)} HDD / ${fmt(g.ecmwf_cdd,0)} CDD`;
+    const d=wx.days,dd=(r,m)=>r[m]?r[m].hdd+r[m].cdd:null;vline=T(new Date().toISOString().slice(0,10));
+    const hasN=d.some(r=>r.normal);
+    draw('wx',{series:[...(hasN?[{data:d.map(r=>[T(r.date),r.normal.hdd+r.normal.cdd]),color:'--mute',dash:'4 3',w:1.2}]:[]),
+      {data:d.filter(r=>r.gfs).map(r=>[T(r.date),dd(r,'gfs')]),color:'--a'},{data:d.filter(r=>r.ecmwf).map(r=>[T(r.date),dd(r,'ecmwf')]),color:'--b'}]});
+    vline=null;const g=wx.totals,n=wx.normal15;
+    $('wxsub').textContent=`Next 15d HDD+CDD — GFS ${fmt(g.gfs_hdd+g.gfs_cdd,0)} · ECMWF ${fmt(g.ecmwf_hdd+g.ecmwf_cdd,0)}`+(n?` · normal ${fmt(n.hdd+n.cdd,0)} (avg ${sgn(wx.dev.avg,0)} DD vs normal)`:' · normals unavailable');
     const h=wx.history;
     draw('rv',{series:[{data:h.map(x=>[x.ts,x.gfs_hdd]),color:'--a'},{data:h.map(x=>[x.ts,x.ecmwf_hdd]),color:'--b'}]});
     $('rvsub').textContent=`${h.length} snapshot(s), taken hourly while the server runs`;
-    const row=(n,r)=>r?`<tr><td>${n}</td><td class="${bull(r.gfs_hdd)}">${sgn(r.gfs_hdd,1)}</td><td class="${bull(r.ecmwf_hdd)}">${sgn(r.ecmwf_hdd,1)}</td><td class="${bull(r.gfs_cdd)}">${sgn(r.gfs_cdd,1)}</td><td class="${bull(r.ecmwf_cdd)}">${sgn(r.ecmwf_cdd,1)}</td></tr>`:`<tr><td>${n}</td><td colspan=4 style="color:var(--mute)">not enough history yet</td></tr>`;
-    $('rvtab').innerHTML=`<table class="rv"><tr><th>Change in 15d total</th><th>GFS HDD</th><th>ECMWF HDD</th><th>GFS CDD</th><th>ECMWF CDD</th></tr>${row('vs ~6h ago',wx.rev_6h)}${row('vs ~24h ago',wx.rev_24h)}</table>`;
+    const row=(nm,r)=>r?`<tr><td>${nm}</td><td class="${bull(r.gfs_hdd)}">${sgn(r.gfs_hdd,1)}</td><td class="${bull(r.ecmwf_hdd)}">${sgn(r.ecmwf_hdd,1)}</td><td class="${bull(r.gfs_cdd)}">${sgn(r.gfs_cdd,1)}</td><td class="${bull(r.ecmwf_cdd)}">${sgn(r.ecmwf_cdd,1)}</td></tr>`:`<tr><td>${nm}</td><td colspan=4 style="color:var(--mute)">not enough history yet</td></tr>`;
+    $('rvtab').innerHTML=`<table class="t" style="margin-top:8px"><tr><th>Change in 15d total</th><th>GFS HDD</th><th>ECMWF HDD</th><th>GFS CDD</th><th>ECMWF CDD</th></tr>${row('vs ~6h ago',wx.rev_6h)}${row('vs ~24h ago',wx.rev_24h)}</table>`;
   }else{errBox('wx',wx.error);errBox('rv',wx.error)}
+  if(ok(pwx)){const cols=['--a','--b','--c'];draw('pwx',{series:pwx.regions.map((r,i)=>({data:line(r.days),color:cols[i]}))});
+    $('pwxsub').textContent=`Daily minimum °F, next 15 days · ${pwx.max_risk_days} day(s) at/below freeze-off threshold${pwx.worst_region?' ('+pwx.worst_region+')':''}`;
+    $('pwxlg').innerHTML=pwx.regions.map((r,i)=>`<span><i style="background:var(${cols[i]})"></i>${r.name} (≤${r.threshold}°F: ${r.risk_days}d, low ${fmt(r.lowest,0)}°F)</span>`).join('')}
+  else errBox('pwx',pwx.error);
+
   // storage
   if(ok(st)){const w=st.weeks;
     draw('stor',{band:w.filter(r=>r.min5!=null).map(r=>[T(r.period),r.min5,r.max5]),series:[{data:w.filter(r=>r.avg5!=null).map(r=>[T(r.period),r.avg5]),color:'--mute',dash:'4 3',w:1.2},{data:w.map(r=>[T(r.period),r.value]),color:'--a',w:2}]});
-    $('stsub').textContent=`${fmt(st.latest,0)} Bcf, ${sgn(st.vs_avg5,0)} vs 5-yr avg (week ending ${st.asof})`}
-  else errBox('stor',st.error);
-  // power burn
-  if(ok(pw)){draw('pw',{series:[{data:pw.last_year.map(r=>[T(r[0]),r[1]]),color:'--mute',dash:'4 3',w:1.2},{data:line(pw.days),color:'--a'}]});$('pwsub').textContent=pw.note+' · through '+pw.asof}else errBox('pw',pw.error);
-  // CFTC
-  if(ok(cf)){const w=cf.weeks;draw('cf',{series:[{data:w.map(r=>[T(r.date),r.mm_net]),color:'--a',w:2},{data:w.map(r=>[T(r.date),r.prod_net]),color:'--c',w:1.2},{data:w.map(r=>[T(r.date),r.swap_net]),color:'--b',w:1.2}]});
-    $('cfsub').textContent=`Report date ${cf.asof} · MM long ${fmt(cf.latest.mm_long,0)} / short ${fmt(cf.latest.mm_short,0)} · OI ${fmt(cf.latest.oi,0)}`}else errBox('cf',cf.error);
-  // rigs
-  if(ok(rg)){draw('rg',{series:[{data:rg.weeks.map(r=>[T(r[0]),r[1]]),color:'--a',dots:rg.weeks.length<20}]});
-    $('rgsub').textContent=`${fmt(rg.latest,0)} gas rigs (week of ${rg.asof}) · ${rg.points} weekly point(s) stored`}else errBox('rg',rg.error+' — add data/rigs.csv (date,gas,oil) as a manual feed');
-  // LNG
+    $('stsub').textContent=`${fmt(st.latest,0)} Bcf, ${sgn(st.vs_avg5,0)} Bcf (${sgn(st.pct_vs_avg5,1)}%) vs 5-yr avg · week ending ${st.asof}`;
+    const p=st.projection;
+    $('projsub').textContent=p?`Projection to ${p.date} (${p.kind}) using the 5-yr average remaining change`:'';
+    tblEl('projTab',`<table class="t"><tbody>
+      <tr><th>This week's change</th><td>${sgn(st.change,0)} Bcf</td></tr>
+      <tr><th>5-yr avg for this week</th><td>${sgn(st.chg_avg5,0)} Bcf</td></tr>
+      <tr><th>vs year ago (level)</th><td>${sgn(st.vs_year_ago,0)} Bcf</td></tr>
+      ${p?`<tr><th>Projected ${p.date}</th><td><b>${fmt(p.level,0)} Bcf</b></td></tr><tr><th>5-yr avg at that date</th><td>${fmt(p.avg5_end,0)} Bcf</td></tr><tr><th>5-yr range at that date</th><td>${fmt(p.min5_end,0)} – ${fmt(p.max5_end,0)} Bcf</td></tr>`:''}</tbody></table>`);
+    const regs=st.regions;
+    tblEl('regTab',Array.isArray(regs)?`<table class="t"><thead><tr><th>Region</th><th>Bcf</th><th>w/w</th><th>vs 5-yr</th><th>vs yr ago</th><th>Signal</th></tr></thead><tbody>${regs.map(r=>`<tr class="${r.sub?'sub':''}"><td>${r.name}</td><td>${fmt(r.latest,0)}</td><td>${sgn(r.change,0)}</td><td>${sgn(r.vs_avg5,0)} (${sgn(r.pct_vs_avg5,1)}%)</td><td>${sgn(r.vs_year_ago,0)}</td><td>${badge('storage_region_'+r.key)}</td></tr>`).join('')}</tbody></table>`:'',regs&&regs.error);
+  }else{errBox('stor',st.error);tblEl('projTab','',st.error);tblEl('regTab','',st.error)}
+
+  // demand
+  if(ok(pw)){draw('pw',{series:[{data:line(pw.last_year),color:'--mute',dash:'4 3',w:1.2},{data:line(pw.days),color:'--a'}]});$('pwsub').textContent=pw.note+' · through '+pw.asof;
+    const c=pw.clean;if(ok(c)){draw('cl',{series:[{data:line(c.last_year),color:'--mute',dash:'4 3',w:1.2},{data:line(c.days),color:'--a'}]});$('clsub').textContent=`${fmt(c.latest_gw,1)} GW now, ${sgn(c.delta_gw,1)} GW vs last year (≈${sgn(c.delta_bcfd,1)} Bcf/d of gas displaced)`}else errBox('cl',c&&c.error||'unavailable');
+    const n=pw.nuclear;if(ok(n)){draw('nu',{series:[{data:line(n.last_year),color:'--mute',dash:'4 3',w:1.2},{data:line(n.days),color:'--a'}]});$('nusub').textContent=`${fmt(n.latest_pct,1)}% offline now (${fmt(n.latest_mw,0)} MW), ${sgn(n.delta_mw,0)} MW vs last year (7d avg)`}else errBox('nu',n&&n.error||'unavailable')}
+  else{['pw','cl','nu'].forEach(e=>errBox(e,pw.error))}
   if(ok(lng)){draw('lng',{series:[{data:line(lng.days),color:'--c',dots:lng.days.length<40}]});
     $('lngsub').textContent=lng.source=='csv'?'From data/lng_feedgas.csv':lng.source=='demo'?'Demo':lng.note}else errBox('lng',lng.error);
-  // fundamentals
-  const s=(k,el,color)=>{const d=fu[k];if(!d||d.error)return errBox(el,d?.error||fu.error||'unavailable');draw(el,{series:[{data:line(d),color}]})};
+  const s=(k,el,color)=>{const d=fu[k];if(!d||d.error)return errBox(el,d&&d.error||fu.error||'unavailable');draw(el,{series:[{data:line(d),color}]})};
   if(ok(fu)){s('spot','spot','--a');s('production','prod','--c');
     if(!fu.lng_exports.error&&!fu.mexico_exports.error)draw('exp',{series:[{data:line(fu.lng_exports),color:'--a'},{data:line(fu.mexico_exports),color:'--c'}]});else errBox('exp',fu.lng_exports.error||fu.mexico_exports.error)}
   else['spot','prod','exp'].forEach(e=>errBox(e,fu.error));
-  $('status').textContent='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min';
+
+  // supply
+  if(ok(rg)){draw('rg',{series:[{data:rg.weeks.map(r=>[T(r[0]),r[1]]),color:'--a',dots:rg.weeks.length<20}]});
+    $('rgsub').textContent=`${fmt(rg.latest,0)} gas rigs (week of ${rg.asof}) · ${rg.points} weekly point(s) stored`;
+    if(rg.basins&&rg.basins.length){const cols={Haynesville:'--a',Marcellus:'--b',Utica:'--c'};
+      draw('bs',{series:Object.keys(cols).filter(b=>rg.basin_weeks[b]).map(b=>({data:rg.basin_weeks[b].map(r=>[T(r[0]),r[1]]),color:cols[b]}))});
+      $('bslg').innerHTML=Object.keys(cols).map(b=>`<span><i style="background:var(${cols[b]})"></i>${b} (gas)</span>`).join('');
+      $('bsTab').innerHTML=`<table class="t" style="margin-top:8px"><thead><tr><th>Basin</th><th>Rigs</th><th>w/w</th><th>y/y</th><th>Signal</th></tr></thead><tbody>${rg.basins.map(b=>`<tr><td>${b.basin} <span style="color:var(--mute)">(${b.metric})</span></td><td>${fmt(b.latest,0)}</td><td>${sgn(b.wow,0)}</td><td>${sgn(b.yoy,0)}</td><td>${badge('rigs_basin_'+b.basin.toLowerCase().replace(/ /g,'_'))}</td></tr>`).join('')}</tbody></table>`}
+    else errBox('bs','Basin breakdown unavailable (needs Baker Hughes download; CSV fallback has no basin data)')}
+  else{errBox('rg',rg.error+' — add data/rigs.csv (date,gas,oil) as a manual feed');errBox('bs',rg.error)}
+  if(ok(fu)&&Array.isArray(fu.production)){const p=fu.production,y=p.length>12?(p[p.length-1][1]/p[p.length-13][1]-1)*100:null;$('prsub').textContent=`${p[p.length-1][0]}: ${fmt(p[p.length-1][1],0)} MMcf${y!=null?' ('+sgn(y,1)+'% y/y)':''} · EIA monthly (1-2 month lag)`}
+  if(ok(steo)){vline=T(steo.current_month+'-01');draw('sp',{series:[{data:line(steo.series.prod),color:'--c'}]});draw('si',{series:[{data:line(steo.series.inv),color:'--a'}]});vline=null}
+  else{errBox('sp',steo.error);errBox('si',steo.error)}
+
+  // positioning & risk
+  if(ok(cf)){const w=cf.weeks;draw('cf',{series:[{data:w.map(r=>[T(r.date),r.mm_net]),color:'--a',w:2},{data:w.map(r=>[T(r.date),r.prod_net]),color:'--c',w:1.2},{data:w.map(r=>[T(r.date),r.swap_net]),color:'--b',w:1.2}]});
+    $('cfsub').textContent=`Report date ${cf.asof} · MM long ${fmt(cf.latest.mm_long,0)} / short ${fmt(cf.latest.mm_short,0)} · OI ${fmt(cf.latest.oi,0)}`}else errBox('cf',cf.error);
+  if(ok(tr)){const s_=tr.storms;
+    $('trsub').textContent=s_.length?`${s_.length} active system(s) (all basins). Distance is to the central Gulf production area.`:'No active tropical systems reported by NHC.';
+    tblEl('trTab',s_.length?`<table class="t"><thead><tr><th>Storm</th><th>Class</th><th>Wind</th><th>Distance</th><th>Gulf?</th></tr></thead><tbody>${s_.map(x=>`<tr><td>${x.url?`<a href="${x.url}" target="_blank" rel="noopener" style="color:var(--a)">${x.name}</a>`:x.name}${x.atlantic?'':' <span style="color:var(--mute)">(Pacific)</span>'}</td><td>${x.classification}</td><td>${x.mph} mph</td><td>${fmt(x.dist_km,0)} km</td><td>${x.in_gulf?'<b class="dn">in Gulf</b>':'–'}</td></tr>`).join('')}</tbody></table>`:'')}
+  else tblEl('trTab','',tr.error);
+
+  $('status').innerHTML='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min'+(stale.length?` · <span class="dn" title="${esc(stale.map(([k,v])=>k+': '+v).join('\n'))}">⚠ showing cached data for ${stale.map(x=>x[0]).join(', ')}</span>`:'');
 }
 
 // ---------- Release schedule + alerts ----------
@@ -152,33 +253,44 @@ const ET='America/New_York';
 const etParts=ms=>Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:ET,hourCycle:'h23',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'}).formatToParts(ms).map(x=>[x.type,+x.value]));
 const etOffset=ms=>{const p=etParts(ms);return Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second)-ms};
 const etWall=(y,m,d,h,mi)=>{const g=Date.UTC(y,m,d,h,mi);return g-etOffset(g-etOffset(g))};
-// next time after `from` that falls on one of `dows` (0=Sun) at h:mi Eastern
 function nextET(dows,h,mi,from){const p=etParts(from);
   for(let i=0;i<15;i++){const dt=new Date(Date.UTC(p.year,p.month-1,p.day+i));
     if(!dows.includes(dt.getUTCDay()))continue;
     const t=etWall(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate(),h,mi);if(t>from)return t}}
 function nextUTC(hours,mi,from){const d=new Date(from);
   for(let i=0;i<3;i++)for(const h of hours){const t=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+i,h,mi);if(t>from)return t}}
+function nextSteo(from){const p=etParts(from);   // Tuesday after the first Thursday, 12:00 ET
+  for(let i=0;i<3;i++){const y=p.year,m=p.month-1+i,first=new Date(Date.UTC(y,m,1)).getUTCDay(),thu=1+(4-first+7)%7;const t=etWall(y,m,thu+5,12,0);if(t>from)return t}}
+function nextMonthEnd(from){const p=etParts(from);   // last weekday of month, 12:00 ET
+  for(let i=0;i<3;i++){let d=new Date(Date.UTC(p.year,p.month+i,0));while([0,6].includes(d.getUTCDay()))d=new Date(d-864e5);
+    const t=etWall(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12,0);if(t>from)return t}}
 const WK=[1,2,3,4,5];
+const WXIDS=['wx_vs_normal','wx_revision','freeze'];
 const RELEASES=[
- {id:'storage',name:'EIA weekly storage report',api:'storage',next:f=>nextET([4],10,30,f),sig:d=>d.asof,
-  msg:d=>`Storage ${fmt(d.latest,0)} Bcf (${sgn(d.change,0)} w/w), ${sgn(d.vs_avg5,0)} vs 5-yr avg`},
- {id:'rigs',name:'Baker Hughes rig count',api:'rigs',next:f=>nextET([5],13,0,f),sig:d=>d.asof,
+ {id:'storage',name:'EIA weekly storage report',api:'storage',next:f=>nextET([4],10,30,f),sig:d=>d.asof,scores:['storage_surplus','storage_injection','storage_projection'],
+  msg:d=>`Storage ${fmt(d.latest,0)} Bcf (${sgn(d.change,0)} w/w; 5-yr avg ${sgn(d.chg_avg5,0)}), ${sgn(d.vs_avg5,0)} vs 5-yr`},
+ {id:'rigs',name:'Baker Hughes rig count',api:'rigs',next:f=>nextET([5],13,0,f),sig:d=>d.asof,scores:['rigs_gas'],
   msg:d=>`US gas rigs ${fmt(d.latest,0)} (${sgn(d.wow,0)} w/w)`},
- {id:'cftc',name:'CFTC Commitments of Traders',api:'cftc',next:f=>nextET([5],15,30,f),sig:d=>d.asof,
+ {id:'cftc',name:'CFTC Commitments of Traders',api:'cftc',next:f=>nextET([5],15,30,f),sig:d=>d.asof,scores:['cftc'],
   msg:d=>`Managed money net ${fmt(d.latest.mm_net,0)} (${sgn(d.change,0)} w/w)`},
- {id:'power',name:'EIA-930 power generation (daily)',api:'power',approx:true,next:f=>nextET(WK,11,0,f),sig:d=>d.asof,
+ {id:'power',name:'EIA-930 power generation (daily)',api:'power',approx:true,next:f=>nextET(WK,11,0,f),sig:d=>d.asof,scores:['power_burn','renewables','nuclear'],
   msg:d=>`Power burn ${fmt(d.latest,1)} Bcf/d (7d avg ${fmt(d.avg7,1)})`},
- {id:'gfs',name:'GFS model run (00/06/12/18Z)',api:'weather',approx:true,next:f=>nextUTC([4,10,16,22],0,f),sig:d=>JSON.stringify(d.totals),
-  msg:d=>`GFS 15d: ${fmt(d.totals.gfs_hdd,0)} HDD / ${fmt(d.totals.gfs_cdd,0)} CDD`},
- {id:'ecmwf',name:'ECMWF IFS run (00/12Z)',api:'weather',approx:true,next:f=>nextUTC([8,20],0,f),sig:d=>JSON.stringify(d.totals),
-  msg:d=>`ECMWF 15d: ${fmt(d.totals.ecmwf_hdd,0)} HDD / ${fmt(d.totals.ecmwf_cdd,0)} CDD`},
+ {id:'gfs',name:'GFS model run (00/06/12/18Z)',api:'weather',approx:true,next:f=>nextUTC([4,10,16,22],0,f),sig:d=>JSON.stringify(d.totals),scores:WXIDS,
+  msg:d=>`GFS 15d: ${fmt(d.totals.gfs_hdd,0)} HDD / ${fmt(d.totals.gfs_cdd,0)} CDD${d.dev?` (${sgn(d.dev.gfs,0)} DD vs normal)`:''}`},
+ {id:'ecmwf',name:'ECMWF IFS run (00/12Z)',api:'weather',approx:true,next:f=>nextUTC([8,20],0,f),sig:d=>JSON.stringify(d.totals),scores:WXIDS,
+  msg:d=>`ECMWF 15d: ${fmt(d.totals.ecmwf_hdd,0)} HDD / ${fmt(d.totals.ecmwf_cdd,0)} CDD${d.dev?` (${sgn(d.dev.ecmwf,0)} DD vs normal)`:''}`},
+ {id:'nhc',name:'NHC advisories (when storms are active)',api:'tropics',next:f=>nextUTC([3,9,15,21],0,f),sig:d=>JSON.stringify(d.storms.map(s=>[s.id,s.kt,s.lat,s.lon])),scores:['hurricane'],
+  msg:d=>d.storms.length?d.storms.slice(0,3).map(s=>`${s.name} ${s.classification} ${s.mph} mph, ${fmt(s.dist_km,0)} km from Gulf`).join('; '):'No active systems'},
+ {id:'steo',name:'EIA Short-Term Energy Outlook (monthly)',api:'steo',approx:true,next:nextSteo,sig:d=>JSON.stringify(d.series.prod.slice(-18)),scores:[],
+  msg:d=>`STEO marketed production ${fmt(d.series.prod.slice(-1)[0][1],1)} Bcf/d (${d.series.prod.slice(-1)[0][0]})`},
+ {id:'ngm',name:'EIA monthly production/exports (month-end)',api:'fundamentals',approx:true,next:nextMonthEnd,sig:d=>JSON.stringify([d.production&&d.production.slice(-1)[0],d.lng_exports&&d.lng_exports.slice(-1)[0]]),scores:['production','mexico','lng'],
+  msg:d=>`Production ${fmt(d.production.slice(-1)[0][1],0)} MMcf (${d.production.slice(-1)[0][0]}); LNG exports ${fmt(d.lng_exports.slice(-1)[0][1],0)} MMcf`},
 ];
 let latest={};
 const state={};RELEASES.forEach(r=>state[r.id]={target:r.next(Date.now()),watch:null});
 let alerts=false;try{alerts=localStorage.getItem('ngAlerts')=='1'&&window.Notification&&Notification.permission=='granted'}catch(e){}
 function notify(title,body){
-  const t=document.createElement('div');t.innerHTML=`<b>${title}</b><br>${body}`;$('toast').appendChild(t);setTimeout(()=>t.remove(),12000);
+  const t=document.createElement('div');t.innerHTML=`<b>${esc(title)}</b><br>${esc(body).replace(/\n/g,'<br>')}`;$('toast').appendChild(t);setTimeout(()=>t.remove(),20000);
   if(alerts&&window.Notification&&Notification.permission=='granted')try{new Notification(title,{body})}catch(e){}}
 function paintAlertBtn(){const b=$('alBtn');b.textContent=alerts?'Alerts on':'Enable alerts';b.classList.toggle('on',alerts)}
 $('alBtn').onclick=async()=>{
@@ -186,19 +298,23 @@ $('alBtn').onclick=async()=>{
   if(!window.Notification){notify('Alerts','Browser notifications unsupported; in-page alerts only.');return}
   const p=Notification.permission=='granted'?'granted':await Notification.requestPermission();
   alerts=p=='granted';try{localStorage.setItem('ngAlerts',alerts?'1':'0')}catch(e){}
-  if(!alerts)notify('Alerts','Notifications blocked in browser settings; in-page alerts only.');else notify('Alerts on','You will be notified when each release is due and when new data lands. Keep this tab open.');
+  if(!alerts)notify('Alerts','Notifications blocked in browser settings; in-page alerts only.');else notify('Alerts on','You will be notified when each release is due and when new data lands, with its bullish/bearish score. Keep this tab open.');
   paintAlertBtn()};
 const dur=ms=>{const s=Math.max(0,Math.round(ms/1000)),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d?`${d}d ${h}h`:h?`${h}h ${m}m`:m?`${m}m ${s%60}s`:`${s}s`};
 async function watchTick(r,st){const w=st.watch;if(!w)return;
   if(Date.now()-w.start>45*60000){st.watch=null;notify(r.name,'No new data after 45 min. Will keep the normal refresh.');return}
   if(Date.now()<w.nextPoll)return;w.nextPoll=Date.now()+60000;
   const d=await get(`/api/${r.api}?fresh=1`);
-  if(d&&!d.error&&r.sig(d)!==w.baseline){st.watch=null;notify(`New data: ${r.name}`,r.msg(d));refresh()}}
+  if(d&&!d.error&&r.sig(d)!==w.baseline){st.watch=null;
+    const before=COMP?COMP.value:null;const sc=await get('/api/scores');applyScores(sc);
+    const parts=r.scores.map(id=>SC[id]).filter(Boolean).map(s=>`${s.metric}: ${s.label} (${sg(s.score)})`);
+    const comp=COMP&&COMP.value!=null?`Composite ${sg(COMP.value)} ${COMP.label}${before!=null&&before!==COMP.value?` (was ${sg(before)})`:''}`:'';
+    notify(`New data: ${r.name}`,[r.msg(d),...parts,comp].filter(Boolean).join('\n'));refresh()}}
 function scheduler(){
   const now=Date.now();let rows=[];
   for(const r of RELEASES){const st=state[r.id];
-    if(now>=st.target){ // release is due
-      const base=latest[r.id==='gfs'||r.id==='ecmwf'?'weather':r.api];
+    if(now>=st.target){
+      const base=latest[r.api];
       st.watch={start:now,nextPoll:now+30000,baseline:base&&!base.error?r.sig(base):null};
       notify(`Due now: ${r.name}`,'Checking for the new numbers…');
       st.target=r.next(now+1000)}
