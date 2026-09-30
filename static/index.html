@@ -75,12 +75,14 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
  <div class="card"><h2>Nuclear outages (% of capacity) <span data-s="nuclear"></span></h2><div class="sub" id="nusub"></div><svg id="nu"></svg>
   <div class="lg"><span><i style="background:var(--a)"></i>This year</span><span><i style="background:var(--mute)"></i>Last year</span></div></div>
  <div class="card"><h2>LNG feedgas (Bcf/d) <span data-s="lng"></span></h2><div class="sub" id="lngsub"></div><svg id="lng"></svg></div>
+ <div class="card"><h2>LNG feedgas, weekly (EIA NGWU) <span data-s="lng_weekly"></span></h2><div class="sub" id="nlsub"></div><div id="nlBig"></div><div id="nlTab"></div></div>
  <div class="card"><h2>Exports (MMcf / month) <span data-s="mexico"></span></h2><div class="sub">LNG + pipeline to Mexico</div><svg id="exp"></svg>
   <div class="lg"><span><i style="background:var(--a)"></i>LNG</span><span><i style="background:var(--c)"></i>Mexico pipeline</span></div></div>
 
  <h3 class="sec">Supply</h3>
  <div class="card"><h2>US gas rigs (Baker Hughes) <span data-s="rigs_gas"></span></h2><div class="sub" id="rgsub"></div><svg id="rg"></svg></div>
  <div class="card"><h2>Rigs by basin</h2><div class="sub">Gas basins charted; Permian/Eagle Ford (oil-directed, associated gas) in the table.</div><svg id="bs"></svg><div class="lg" id="bslg"></div><div id="bsTab"></div></div>
+ <div class="card"><h2>Dry gas production, weekly (Bcf/d) <span data-s="dry_production"></span></h2><div class="sub" id="ndsub"></div><div id="ndBig"></div></div>
  <div class="card"><h2>Marketed production (MMcf / month) <span data-s="production"></span></h2><div class="sub" id="prsub">EIA monthly (1-2 month lag)</div><svg id="prod"></svg></div>
  <div class="card"><h2>EIA STEO: marketed production outlook (Bcf/d)</h2><div class="sub">Monthly STEO; dashed line = current month, right of it = forecast</div><svg id="sp"></svg></div>
  <div class="card"><h2>EIA STEO: working gas inventory outlook (Bcf)</h2><div class="sub">End-of-month</div><svg id="si"></svg></div>
@@ -155,10 +157,10 @@ function applyScores(sc){
 
 // ---------- refresh ----------
 async function refresh(){
-  const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo'];
+  const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo','ngwu'];
   const res=await Promise.all(names.map(x=>get('/api/'+x)));
-  const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo]=res;
-  latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo};
+  const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw]=res;
+  latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
   applyScores(await get('/api/scores'));
   $('banner').style.display=cfg.demo||!cfg.eia?'block':'none';
   $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA_API_KEY not set — storage, spot, production, exports, power, STEO and LNG proxy are unavailable (free key: eia.gov/opendata).';
@@ -173,6 +175,7 @@ async function refresh(){
   if(ok(wx)&&wx.dev)t.push(tile('15d weather vs normal',sgn(wx.dev.avg,0)+' DD',`GFS ${sgn(wx.dev.gfs,0)} · ECMWF ${sgn(wx.dev.ecmwf,0)}`,'wx_vs_normal'));
   if(ok(pw))t.push(tile('Power burn (7d)',fmt(pw.avg7,1)+' Bcf/d',pw.vs_ly7!=null?`${sgn(pw.vs_ly7,1)} vs last year`:'','power_burn'));
   if(ok(lng)&&lng.days.length){const d=lng.days[lng.days.length-1];t.push(tile(lng.source=='eia_proxy'?'LNG exports (proxy)':'LNG feedgas',fmt(d[1],1)+' Bcf/d',d[0],'lng'))}
+  if(ok(nw)){const c=nw.latest,f=nw.stale?' ⚠ stale':'';t.push(tile('LNG feedgas (weekly)',fmt(c.lng,1)+' Bcf/d',`${sgn(c.lng_wow,1)} w/w · wk ${c.week_end}${f}`,'lng_weekly'),tile('Dry gas production (weekly)',fmt(c.dry,1)+' Bcf/d',`${sgn(c.dry_wow,1)} w/w · wk ${c.week_end}${f}`,'dry_production'))}
   if(ok(rg))t.push(tile('US gas rigs',fmt(rg.latest,0),`${sgn(rg.wow,0)} w/w${rg.yoy!=null?' · '+sgn(rg.yoy,0)+' y/y':''}`,'rigs_gas'));
   if(ok(cf))t.push(tile('Managed money net',fmt(cf.latest.mm_net,0),`${cf.pctile_3y}${(n=>{const m=n%100;return m>=11&&m<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')})(cf.pctile_3y)} pctile (3y) · ${sgn(cf.change,0)} w/w`,'cftc'));
   if(ok(fu)&&Array.isArray(fu.spot)){const s=fu.spot,l=s[s.length-1][1];t.push(tile('Henry Hub spot',fmt(l,3),s[s.length-1][0],null))}
@@ -237,6 +240,16 @@ async function refresh(){
   if(ok(steo)){vline=T(steo.current_month+'-01');draw('sp',{series:[{data:line(steo.series.prod),color:'--c'}]});draw('si',{series:[{data:line(steo.series.inv),color:'--a'}]});vline=null}
   else{errBox('sp',steo.error);errBox('si',steo.error)}
 
+  // weekly NGWU (latest week only)
+  if(ok(nw)){const c=nw.latest,warn=nw.stale?`⚠ Latest EIA page is for the week ending ${c.week_end} (${nw.age_days} days old), so it is not current: shown for reference and not scored. `:'';
+    const big=(v,w,unit)=>`<div class="big ${nw.stale?'':''}">${fmt(v,1)} <span style="font-size:14px;color:var(--mute)">${unit}</span></div><div class="${bull(w)}" style="margin-top:4px">${sgn(w,1)} Bcf/d vs prior week</div>`;
+    $('nlsub').textContent=warn+`Week ending ${c.week_end} (released ${c.release}) · pipeline deliveries to LNG export terminals`;
+    $('nlBig').innerHTML=big(c.lng,c.lng_wow,'Bcf/d');
+    $('ndsub').textContent=warn+`Week ending ${c.week_end} (released ${c.release}) · S&P Global via EIA`;
+    $('ndBig').innerHTML=big(c.dry,c.dry_wow,'Bcf/d')+`<table class="t" style="margin-top:10px"><tbody><tr><th>Exports to Mexico</th><td>${sgn(c.mexico_wow,1)} Bcf/d w/w</td></tr><tr><th>Net imports from Canada</th><td>${sgn(c.canada_wow,1)} Bcf/d w/w</td></tr></tbody></table>`;
+    tblEl('nlTab',c.regions&&c.regions.length?`<table class="t" style="margin-top:10px"><thead><tr><th>Terminal region</th><th>w/w</th></tr></thead><tbody>${c.regions.map(r=>`<tr><td>${r.region}</td><td>${sgn(r.bcfd,1)} Bcf/d (${sgn(r.pct,1)}%)</td></tr>`).join('')}</tbody></table>`:'')}
+  else{tblEl('nlBig','',nw.error);tblEl('ndBig','',nw.error)}
+
   // positioning & risk
   if(ok(cf)){const w=cf.weeks;draw('cf',{series:[{data:w.map(r=>[T(r.date),r.mm_net]),color:'--a',w:2},{data:w.map(r=>[T(r.date),r.prod_net]),color:'--c',w:1.2},{data:w.map(r=>[T(r.date),r.swap_net]),color:'--b',w:1.2}]});
     $('cfsub').textContent=`Report date ${cf.asof} · MM long ${fmt(cf.latest.mm_long,0)} / short ${fmt(cf.latest.mm_short,0)} · OI ${fmt(cf.latest.oi,0)}`}else errBox('cf',cf.error);
@@ -279,6 +292,8 @@ const RELEASES=[
   msg:d=>`GFS 15d: ${fmt(d.totals.gfs_hdd,0)} HDD / ${fmt(d.totals.gfs_cdd,0)} CDD${d.dev?` (${sgn(d.dev.gfs,0)} DD vs normal)`:''}`},
  {id:'ecmwf',name:'ECMWF IFS run (00/12Z)',api:'weather',approx:true,next:f=>nextUTC([8,20],0,f),sig:d=>JSON.stringify(d.totals),scores:WXIDS,
   msg:d=>`ECMWF 15d: ${fmt(d.totals.ecmwf_hdd,0)} HDD / ${fmt(d.totals.ecmwf_cdd,0)} CDD${d.dev?` (${sgn(d.dev.ecmwf,0)} DD vs normal)`:''}`},
+ {id:'ngwu',name:'EIA Natural Gas Weekly Update',api:'ngwu',approx:true,next:f=>nextET([4],14,0,f),sig:d=>JSON.stringify([d.latest.week_end,d.latest.dry,d.latest.lng]),scores:['lng_weekly','dry_production'],
+  msg:d=>`Dry production ${fmt(d.latest.dry,1)} Bcf/d (${sgn(d.latest.dry_wow,1)} w/w); LNG feedgas ${fmt(d.latest.lng,1)} Bcf/d (${sgn(d.latest.lng_wow,1)} w/w)`},
  {id:'nhc',name:'NHC advisories (when storms are active)',api:'tropics',next:f=>nextUTC([3,9,15,21],0,f),sig:d=>JSON.stringify(d.storms.map(s=>[s.id,s.kt,s.lat,s.lon])),scores:['hurricane'],
   msg:d=>d.storms.length?d.storms.slice(0,3).map(s=>`${s.name} ${s.classification} ${s.mph} mph, ${fmt(s.dist_km,0)} km from Gulf`).join('; '):'No active systems'},
  {id:'steo',name:'EIA Short-Term Energy Outlook (monthly)',api:'steo',approx:true,next:nextSteo,sig:d=>JSON.stringify(d.series.prod.slice(-18)),scores:[],

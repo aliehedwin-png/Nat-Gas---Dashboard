@@ -12,8 +12,10 @@ Live dashboard of the fundamental drivers of Henry Hub natural gas, with a trans
 | Storage | **By region** (East, Midwest, South Central, Mountain, Pacific, salt / non-salt) | EIA | `EIA_API_KEY` |
 | Demand | Power burn (Bcf/d, estimated from US48 gas generation) | EIA-930 | `EIA_API_KEY` |
 | Demand | **Wind + solar + hydro** vs last year; **nuclear outages** vs last year (both converted to Bcf/d of gas) | EIA-930, EIA nuclear outages | `EIA_API_KEY` |
-| Demand | LNG feedgas (CSV) or LNG exports proxy; Mexico pipeline exports | `data/lng_feedgas.csv` / EIA | CSV optional |
+| Demand | **Weekly LNG feedgas** (pipeline receipts to LNG terminals, latest week only, with regional changes) | EIA Natural Gas Weekly Update (S&P Global) | none |
+| Demand | LNG feedgas (daily CSV) or LNG exports proxy; Mexico pipeline exports | `data/lng_feedgas.csv` / EIA | CSV optional |
 | Supply | Gas rigs, **rigs by basin** (Haynesville, Marcellus, Utica, Permian, Eagle Ford) | Baker Hughes weekly report | none |
+| Supply | **Weekly dry gas production** (latest week only, w/w, plus Mexico exports and Canada imports w/w) | EIA Natural Gas Weekly Update (S&P Global) | none |
 | Supply | Marketed production, **EIA STEO** production and inventory outlook | EIA | `EIA_API_KEY` |
 | Positioning | CFTC managed money / producer / swap net (NYMEX Henry Hub, disaggregated futures-only) | CFTC public reporting API | none |
 | Risk | **Tropical watch** (NHC active storms, distance to central Gulf) | NHC CurrentStorms.json | none |
@@ -57,6 +59,7 @@ NG_DEMO=1 python3 server.py    # synthetic data, no network
 Server caches responses (weather 30 min, most EIA 1h, CFTC/rigs/STEO 6h, weather normals ~1 year) and persists them in `data/cache.json`, so restarts don't re-spend API quota; if a refresh fails it serves the last good data and the page flags it.
 
 ## Caveats
+- **Weekly LNG / dry production (EIA NGWU):** parsed from the page narrative; latest week only, no history. It is flagged stale (and not scored) if the page is >12 days old. The copy reachable from the build sandbox was dated Jan 2026 and repeated identical figures across archived weeks, so these numbers could not be validated there. Check a couple of weeks against eia.gov/naturalgas/weekly before relying on them; their score weights (`lng_weekly`, `dry_production`) default to 0 (shown, not in the composite). Set them in `data/score_config.json` once verified.
 - Verified live: CFTC, Baker Hughes (total + basins, matches their summary), Open-Meteo (forecast, archive normals, producing regions), NHC, and EIA storage (total + regions sum to total), power burn, generation mix, nuclear outages, STEO. EIA spot/production/exports/LNG proxy were verified earlier. The shared `DEMO_KEY` rate-limits quickly: use your own key.
 - Power burn uses a fixed 7.6 MMBtu/MWh heat rate; treat it as an index. Renewables/nuclear Bcf/d figures use the same conversion.
 - Weather weights are a rough 8-city proxy, not official gas-weighted HDD. Forecast-revision scores need ~6h of server uptime.

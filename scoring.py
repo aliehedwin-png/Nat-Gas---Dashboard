@@ -23,6 +23,8 @@ METRICS = {
     "renewables":         ("Wind+solar+hydro vs last year", "Demand", 4),
     "nuclear":            ("Nuclear outages vs last year", "Demand", 3),
     "lng":                ("LNG feedgas / exports trend", "Demand", 12),
+    "lng_weekly":         ("LNG feedgas, weekly change (EIA NGWU)", "Demand", 0),
+    "dry_production":     ("Dry gas production, weekly change (EIA NGWU)", "Supply", 0),
     "mexico":             ("Pipeline exports to Mexico y/y", "Demand", 3),
     "production":         ("Marketed production y/y", "Supply", 8),
     "rigs_gas":           ("Gas rigs y/y", "Supply", 4),
@@ -146,6 +148,16 @@ def compute(d, cfg=None):
             y = pct_change(mex[-1][1], mex[-13][1])
             if y is not None:
                 add("mexico", tier(y, 4, 10), f"{mex[-1][0]} exports to Mexico {y:+.1f}% y/y")
+
+    nw = d.get("ngwu")
+    if good(nw) and not nw.get("stale"):
+        cur = nw["latest"]
+        if cur.get("lng_wow") is not None:
+            add("lng_weekly", tier(cur["lng_wow"], .4, 1.0),
+                f"LNG pipeline receipts {cur['lng']:.1f} Bcf/d, {cur['lng_wow']:+.1f} w/w (week ending {cur['week_end']})")
+        if cur.get("dry_wow") is not None:
+            add("dry_production", tier(-cur["dry_wow"], .5, 1.5),
+                f"Dry production {cur['dry']:.1f} Bcf/d, {cur['dry_wow']:+.1f} w/w (week ending {cur['week_end']})")
 
     # ---- supply / rigs
     r = d.get("rigs")

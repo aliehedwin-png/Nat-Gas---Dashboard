@@ -11,7 +11,7 @@ Optional manual feeds / config (data/ directory):
   data/rigs.csv            date,gas,oil       extra/backfilled Baker Hughes weekly counts
   data/score_config.json   {"weights": {"wx_vs_normal": 20, "cftc": 0}}   see scoring.py
 """
-import csv, io, json, math, os, random, re, statistics, sys, threading, time
+import csv, html, io, json, math, os, random, re, statistics, sys, threading, time
 import urllib.parse, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
@@ -722,12 +722,74 @@ def api_tropics():
     return cached("tropics", 1800, go)
 
 
+# ---------- EIA Natural Gas Weekly Update: weekly dry production, LNG pipeline receipts (feedgas) ----------
+NGWU_URL = "https://www.eia.gov/naturalgas/weekly/"
+MONTHS = {m: i + 1 for i, m in enumerate("January February March April May June July August September October November December".split())}
+UP_WORDS = r"(?:increased|rose|grew|climbed|up)"
+DOWN_WORDS = r"(?:decreased|fell|declined|dropped|down)"
+
+
+def _pdate(txt):
+    m = re.search(r"([A-Z][a-z]+) (\d{1,2}), (\d{4})", txt or "")
+    return date(int(m.group(3)), MONTHS[m.group(1)], int(m.group(2))) if m and m.group(1) in MONTHS else None
+
+
+def parse_ngwu(page_html):
+    """Parse the narrative (not the tables, which are filled by placeholders in some copies)."""
+    t = re.sub(r"<script.*?</script>|<style.*?</style>", "", page_html, flags=re.S)
+    t = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t))
+    t = re.sub(r"\s+", " ", html.unescape(t))
+    hdr = re.search(r"for week ending ([A-Z][a-z]+ \d{1,2}, \d{4})\s*\|\s*Release date:\s*([A-Z][a-z]+ \d{1,2}, \d{4})", t)
+    if not hdr:
+        raise RuntimeError("NGWU: week-ending header not found (page layout changed?)")
+    out = {"week_end": _pdate(hdr.group(1)).isoformat(), "release": _pdate(hdr.group(2)).isoformat()}
+
+    def chg(pattern):
+        m = re.search(pattern + r"\s+(?:by\s+)?([\d.]+)%\s*\(([\d.]+) Bcf/d\)", t)
+        if not m:
+            return None
+        return (1 if re.fullmatch(UP_WORDS, m.group(1)) else -1) * float(m.group(3))
+    m = re.search(r"[Dd]ry natural gas production.{0,160}?(?:average|averaged|was)\s+([\d.]+)\s*Bcf/d", t)
+    out["dry"] = float(m.group(1)) if m else None
+    out["dry_wow"] = chg(r"[Dd]ry natural gas production (" + UP_WORDS + "|" + DOWN_WORDS + ")")
+    m = re.search(r"(?:LNG pipeline receipts\)?|deliveries to U\.S\. LNG export terminals).{0,160}?(?:averaged|to)\s+([\d.]+)\s*Bcf/d", t)
+    out["lng"] = float(m.group(1)) if m else None
+    m = re.search(r"deliveries to U\.S\. LNG export terminals (" + UP_WORDS + "|" + DOWN_WORDS + r") ([\d.]+) Bcf/d", t)
+    out["lng_wow"] = (1 if m and re.fullmatch(UP_WORDS, m.group(1)) else -1) * float(m.group(2)) if m else None
+    out["regions"] = [{"region": "Outside US Gulf Coast" if r.startswith("U.S.") else r, "pct": (1 if re.fullmatch(UP_WORDS, d) else -1) * float(p), "bcfd": (1 if re.fullmatch(UP_WORDS, d) else -1) * float(b)}
+                      for r, d, p, b in re.findall(r"terminals (?:in|outside the) ((?:South Louisiana|South Texas|U\.S\. Gulf Coast)[A-Za-z. ]*?)\s+(" + UP_WORDS + "|" + DOWN_WORDS + r")\s+([\d.]+)%\s*\(([\d.]+) Bcf/d\)", t)]
+    out["mexico_wow"] = chg(r"exports to Mexico (" + UP_WORDS + "|" + DOWN_WORDS + ")")
+    out["canada_wow"] = chg(r"net imports from Canada (" + UP_WORDS + "|" + DOWN_WORDS + ")")
+    if out["dry"] is None or out["lng"] is None:
+        raise RuntimeError("NGWU: could not find dry production / LNG receipts sentences")
+    if not (80 <= out["dry"] <= 140 and 5 <= out["lng"] <= 30):
+        raise RuntimeError(f"NGWU: implausible values (dry {out['dry']}, LNG {out['lng']} Bcf/d); ignoring")
+    return out
+
+
+def api_ngwu():
+    """Latest week only (no history)."""
+    def go():
+        if DEMO:
+            we = date.today() - timedelta(days=(date.today().weekday() - 2) % 7)
+            cur = {"week_end": we.isoformat(), "release": (we + timedelta(days=1)).isoformat(), "dry": 106.0, "lng": 16.6,
+                   "dry_wow": -.3, "lng_wow": .4, "mexico_wow": .2, "canada_wow": -.1,
+                   "regions": [{"region": "South Louisiana", "pct": 2.3, "bcfd": .3}, {"region": "South Texas", "pct": 10.7, "bcfd": .5},
+                               {"region": "Outside US Gulf Coast", "pct": -48.5, "bcfd": -.5}]}
+        else:
+            cur = parse_ngwu(http_get(NGWU_URL, 30, BH_HEADERS).decode("utf8", "ignore"))
+        age = (date.today() - date.fromisoformat(cur["week_end"])).days
+        return {"latest": cur, "age_days": age, "stale": age > 12,
+                "note": "EIA Natural Gas Weekly Update (S&P Global Commodity Insights); weekly average, parsed from the page narrative."}
+    return cached("ngwu", 3 * 3600, go)
+
+
 # ---------- Scores ----------
 def api_scores():
     d = {}
     for name, fn in (("storage", api_storage), ("weather", api_weather), ("power", api_power), ("rigs", api_rigs),
                      ("cftc", api_cftc), ("lng", api_lng), ("fund", api_fundamentals), ("tropics", api_tropics),
-                     ("prodwx", api_prodwx)):
+                     ("prodwx", api_prodwx), ("ngwu", api_ngwu)):
         try:
             d[name] = fn()
         except Exception as e:
@@ -737,10 +799,10 @@ def api_scores():
 
 ROUTES = {"/api/storage": api_storage, "/api/fundamentals": api_fundamentals, "/api/power": api_power,
           "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather,
-          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/scores": api_scores}
+          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/scores": api_scores}
 CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals": "fund", "/api/power": ("power", "nuclear"),
               "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather",
-              "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo"}
+              "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu"}
 
 
 class Handler(SimpleHTTPRequestHandler):
