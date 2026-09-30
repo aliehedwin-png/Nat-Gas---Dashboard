@@ -1,114 +1,139 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nat Gas Dashboard</title>
+<title>Nat Gas Fundamentals</title>
 <style>
-:root{--bg:#0f1419;--card:#171d25;--line:#2a3340;--text:#e6edf3;--mute:#8b98a7;--up:#3fb950;--dn:#f85149;--a:#58a6ff;--b:#d29922;--c:#a371f7}
-@media(prefers-color-scheme:light){:root{--bg:#f4f6f8;--card:#fff;--line:#d8dee4;--text:#1f2328;--mute:#656d76;--up:#1a7f37;--dn:#cf222e;--a:#0969da;--b:#9a6700;--c:#8250df}}
+:root{--bg:#f4f6f8;--card:#fff;--line:#d8dee4;--text:#1f2328;--mute:#656d76;--up:#1a7f37;--dn:#cf222e;--a:#0969da;--b:#9a6700;--c:#8250df}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1419;--card:#171d25;--line:#2a3340;--text:#e6edf3;--mute:#8b98a7;--up:#3fb950;--dn:#f85149;--a:#58a6ff;--b:#d29922;--c:#a371f7}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,sans-serif}
 header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
 h1{font-size:16px;margin:0}#status{color:var(--mute);font-size:12px}
 .banner{background:var(--b);color:#000;padding:6px 16px;font-size:12px;display:none}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:12px 16px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;padding:12px 16px}
 .tile,.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}
 .tile .l{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
-.tile .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.tile .s{font-size:12px;font-variant-numeric:tabular-nums}
+.tile .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.tile .s{font-size:12px;font-variant-numeric:tabular-nums;color:var(--mute)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px;padding:0 16px 16px}
 .card h2{font-size:13px;margin:0 0 2px}.card .sub{color:var(--mute);font-size:12px;margin-bottom:6px}
-.wide{grid-column:1/-1}.up{color:var(--up)}.dn{color:var(--dn)}
+.wide{grid-column:1/-1}.up{color:var(--up)!important}.dn{color:var(--dn)!important}
 svg{width:100%;height:220px;display:block}svg text{fill:var(--mute);font-size:10px}
 .err{color:var(--dn);font-size:12px;padding:20px 0}
-.tabs button{background:none;border:1px solid var(--line);color:var(--mute);border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px}
-.tabs button.on{color:var(--text);border-color:var(--a)}
-.lg{font-size:11px;color:var(--mute);display:flex;gap:12px;margin-top:4px}.lg i{display:inline-block;width:10px;height:3px;margin-right:4px;vertical-align:middle}
+.lg{font-size:11px;color:var(--mute);display:flex;gap:12px;margin-top:4px;flex-wrap:wrap}.lg i{display:inline-block;width:10px;height:3px;margin-right:4px;vertical-align:middle}
+table.rv{border-collapse:collapse;font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums}table.rv td,table.rv th{padding:2px 10px 2px 0;text-align:left;font-weight:400}table.rv th{color:var(--mute)}
 </style></head><body>
-<header><h1>Natural Gas Futures — Live Dashboard</h1><div id="status">loading…</div></header>
+<header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading…</div></header>
 <div class="banner" id="banner"></div>
 <div class="tiles" id="tiles"></div>
 <div class="grid">
- <div class="card wide"><div style="display:flex;justify-content:space-between"><div><h2>NG front-month (NG=F, $/MMBtu)</h2><div class="sub" id="pxsub"></div></div>
-  <div class="tabs"><button data-r="intraday">1D</button><button data-r="d90" class="on">3M</button><button data-r="daily">1Y</button></div></div><svg id="px"></svg></div>
- <div class="card"><h2>Forward curve</h2><div class="sub">Next 12 monthly contracts — winter premium / contango shape</div><svg id="curve"></svg></div>
+ <div class="card wide"><h2>Weather demand: GFS vs ECMWF (pop-weighted HDD, daily)</h2><div class="sub" id="wxsub"></div><svg id="wx"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>GFS</span><span><i style="background:var(--b)"></i>ECMWF IFS</span><span>past 7 days = model analysis; right of today = forecast</span></div></div>
+ <div class="card"><h2>Forecast updates: 15-day HDD by snapshot</h2><div class="sub" id="rvsub"></div><svg id="rv"></svg><div id="rvtab"></div>
+  <div class="lg"><span><i style="background:var(--a)"></i>GFS</span><span><i style="background:var(--b)"></i>ECMWF</span></div></div>
  <div class="card"><h2>Working gas in storage (Bcf)</h2><div class="sub" id="stsub"></div><svg id="stor"></svg>
   <div class="lg"><span><i style="background:var(--a)"></i>Current</span><span><i style="background:var(--mute)"></i>5-yr avg</span><span><i style="background:var(--line);height:8px"></i>5-yr range</span></div></div>
- <div class="card"><h2>Weather demand (pop-weighted HDD / CDD)</h2><div class="sub" id="wxsub"></div><svg id="wx"></svg>
-  <div class="lg"><span><i style="background:var(--a)"></i>HDD (heating)</span><span><i style="background:var(--dn)"></i>CDD (cooling)</span><span>lighter = forecast</span></div></div>
+ <div class="card"><h2>Power burn (Bcf/d, estimated)</h2><div class="sub" id="pwsub"></div><svg id="pw"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>This year</span><span><i style="background:var(--mute)"></i>Last year</span></div></div>
+ <div class="card"><h2>CFTC positioning: Henry Hub futures (contracts)</h2><div class="sub" id="cfsub"></div><svg id="cf"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>Managed money net</span><span><i style="background:var(--c)"></i>Producer/merchant net</span><span><i style="background:var(--b)"></i>Swap dealer net</span></div></div>
+ <div class="card"><h2>Rig counts: US gas rigs (Baker Hughes)</h2><div class="sub" id="rgsub"></div><svg id="rg"></svg></div>
+ <div class="card"><h2>LNG feedgas (Bcf/d)</h2><div class="sub" id="lngsub"></div><svg id="lng"></svg></div>
  <div class="card"><h2>Henry Hub spot ($/MMBtu)</h2><div class="sub">EIA daily</div><svg id="spot"></svg></div>
  <div class="card"><h2>Marketed production (MMcf / month)</h2><div class="sub">Supply</div><svg id="prod"></svg></div>
- <div class="card"><h2>Exports (MMcf / month)</h2><div class="sub">LNG (blue) + pipeline to Mexico (purple)</div><svg id="exp"></svg></div>
+ <div class="card"><h2>Exports (MMcf / month)</h2><div class="sub">LNG + pipeline to Mexico</div><svg id="exp"></svg>
+  <div class="lg"><span><i style="background:var(--a)"></i>LNG</span><span><i style="background:var(--c)"></i>Mexico pipeline</span></div></div>
 </div>
 <script>
 const $=id=>document.getElementById(id), NS='http://www.w3.org/2000/svg';
 const fmt=(n,d=2)=>n==null?'–':Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
-const cls=n=>n>=0?'up':'dn', sgn=(n,d=2)=>(n>=0?'+':'')+fmt(n,d);
+const sgn=(n,d=2)=>n==null?'–':(n>=0?'+':'')+fmt(n,d);
+const bull=n=>n==null||n===0?'':n>0?'up':'dn';           // positive is bullish for price
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const T=s=>+new Date(s);
 let W=640;const H=220,M={l:52,r:10,t:8,b:20};
 
-function draw(el,{series=[],bars=[],band=null,xTime=true,cat=null,yFmt=v=>Math.abs(v)>=10000?(v/1e6).toFixed(2)+'M':fmt(v,Math.abs(v)>=1000?0:2)}){
+function draw(el,{series=[],bars=[],band=null,cat=null,yFmt=v=>Math.abs(v)>=1e6?(v/1e6).toFixed(2)+'M':Math.abs(v)>=1e4?Math.round(v/1e3)+'k':fmt(v,Math.abs(v)>=1000?0:Math.abs(v)>=10?1:2)}){
   const svg=$(el);W=svg.clientWidth||640;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.innerHTML='';
   const all=[...series.flatMap(s=>s.data),...bars.flatMap(s=>s.data)];
   if(band)band.forEach(b=>all.push([b[0],b[1]],[b[0],b[2]]));
   if(!all.length){svg.innerHTML='<text x=10 y=30>no data</text>';return}
-  let xs=all.map(p=>p[0]),ys=all.map(p=>p[1]);
+  const xs=all.map(p=>p[0]),ys=all.map(p=>p[1]);
   let x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
   if(bars.length)y0=Math.min(0,y0);
   const pad=(y1-y0)*.08||1;y1+=pad;if(!bars.length||y0<0)y0-=pad;
-  const sx=x=>M.l+(x1===x0?0:(x-x0)/(x1-x0))*(W-M.l-M.r), sy=y=>H-M.b-(y-y0)/(y1-y0)*(H-M.t-M.b);
+  const sx=x=>M.l+(x1===x0?(W-M.l-M.r)/2:(x-x0)/(x1-x0))*(W-M.l-M.r), sy=y=>H-M.b-(y-y0)/(y1-y0)*(H-M.t-M.b);
   const el_=(n,a,t)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(t)e.textContent=t;svg.appendChild(e);return e};
   for(let i=0;i<=4;i++){const v=y0+(y1-y0)*i/4,y=sy(v);el_('line',{x1:M.l,x2:W-M.r,y1:y,y2:y,stroke:css('--line'),'stroke-width':.5});el_('text',{x:M.l-4,y:y+3,'text-anchor':'end'},yFmt(v))}
-  for(let i=0;i<=4;i++){const v=x0+(x1-x0)*i/4;let t;
-    if(cat)t=cat[Math.round(v)]??'';else{const d=new Date(v);t=(x1-x0)<2*864e5?d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):d.toLocaleDateString([],{month:'short',day:'numeric'})}
-    el_('text',{x:sx(v),y:H-5,'text-anchor':i==0?'start':i==4?'end':'middle'},t)}
+  if(y0<0&&y1>0)el_('line',{x1:M.l,x2:W-M.r,y1:sy(0),y2:sy(0),stroke:css('--mute'),'stroke-width':.8});
+  const nt=W<500?2:4;for(let i=0;i<=nt;i++){const v=x0+(x1-x0)*i/nt;let t;
+    if(cat)t=cat[Math.round(v)]??'';else{const d=new Date(v),span=x1-x0;t=span<2*864e5?d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):span>400*864e5?d.toLocaleDateString([],{month:'short',year:'2-digit'}):span<4*864e5?d.toLocaleString([],{weekday:'short',hour:'2-digit'}):d.toLocaleDateString([],{month:'short',day:'numeric'})}
+    el_('text',{x:sx(v),y:H-5,'text-anchor':i==0?'start':i==nt?'end':'middle'},t)}
   if(band){const top=band.map(b=>`${sx(b[0])},${sy(b[2])}`),bot=band.slice().reverse().map(b=>`${sx(b[0])},${sy(b[1])}`);
     el_('polygon',{points:[...top,...bot].join(' '),fill:css('--line'),opacity:.6})}
   bars.forEach(s=>{const bw=Math.max(2,(W-M.l-M.r)/s.data.length*.7);
-    s.data.forEach((p,i)=>el_('rect',{x:sx(p[0])-bw/2,y:Math.min(sy(p[1]),sy(0)),width:bw,height:Math.abs(sy(p[1])-sy(0)),fill:css(s.color),opacity:p[2]?.45:1}))});
+    s.data.forEach(p=>el_('rect',{x:sx(p[0])-bw/2,y:Math.min(sy(p[1]),sy(0)),width:bw,height:Math.abs(sy(p[1])-sy(0)),fill:css(s.color),opacity:p[2]?.45:1}))});
   series.forEach(s=>{if(!s.data.length)return;
     el_('polyline',{points:s.data.map(p=>`${sx(p[0])},${sy(p[1])}`).join(' '),fill:'none',stroke:css(s.color),'stroke-width':s.w||1.6,'stroke-dasharray':s.dash||'','stroke-linejoin':'round'});
-    if(s.dots)s.data.forEach(p=>el_('circle',{cx:sx(p[0]),cy:sy(p[1]),r:2.5,fill:css(s.color)}))});
+    if(s.dots||s.data.length<3)s.data.forEach(p=>el_('circle',{cx:sx(p[0]),cy:sy(p[1]),r:2.5,fill:css(s.color)}))});
+  if(vline!=null&&!cat&&vline>x0&&vline<x1)el_('line',{x1:sx(vline),x2:sx(vline),y1:M.t,y2:H-M.b,stroke:css('--mute'),'stroke-dasharray':'3 3','stroke-width':.8});
 }
-const get=u=>fetch(u).then(r=>r.json());
+let vline=null;
+const get=u=>fetch(u).then(r=>r.json()).catch(e=>({error:String(e)}));
 const errBox=(el,m)=>{$(el).outerHTML=`<div class="err" id="${el}">${m}</div>`};
 const tile=(l,v,s,c='')=>`<div class="tile"><div class="l">${l}</div><div class="v">${v}</div><div class="s ${c}">${s||'&nbsp;'}</div></div>`;
-let mkt,range='d90';
-
-function drawPx(){
-  const ng=mkt.ng;if(ng.error)return errBox('px',ng.error);
-  let d=range=='intraday'?ng.intraday:range=='daily'?ng.daily:ng.daily.slice(-63);
-  draw('px',{series:[{data:d,color:'--a'}]});
-}
-document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');range=b.dataset.r;drawPx()});
+const ok=x=>x&&!x.error;
+const line=(rows,i=1)=>rows.map(r=>[T(r[0]),r[i]]);
 
 async function refresh(){
-  const [cfg,m,curve,st,fu,wx]=await Promise.all(['config','market','curve','storage','fundamentals','weather'].map(x=>get('/api/'+x).catch(e=>({error:String(e)}))));
+  const [cfg,st,fu,wx,pw,cf,rg,lng]=await Promise.all(['config','storage','fundamentals','weather','power','cftc','rigs','lng'].map(x=>get('/api/'+x)));
   $('banner').style.display=cfg.demo||!cfg.eia?'block':'none';
-  $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real prices.':'EIA_API_KEY not set — storage, spot, production and export panels are unavailable (free key: eia.gov/opendata).';
-  mkt=m;const t=[];
-  if(m.ng&&!m.ng.error){const ch=m.ng.price-m.ng.prev;t.push(tile('NG front month',fmt(m.ng.price,3),`${sgn(ch,3)} (${sgn(ch/m.ng.prev*100)}%)`,cls(ch)))}
-  for(const [k,l] of [['wti','WTI crude'],['ttf','TTF (EU gas, €/MWh)']])if(m[k]&&!m[k].error){const ch=m[k].price-m[k].prev;t.push(tile(l,fmt(m[k].price),`${sgn(ch/m[k].prev*100)}%`,cls(ch)))}
-  if(m.ng&&m.wti&&!m.ng.error&&!m.wti.error)t.push(tile('Oil / gas ratio',fmt(m.wti.price/m.ng.price,1),'WTI ÷ NG (x)'));
-  if(curve&&curve.length>2){const f=curve[0].price,l=curve.find(c=>c.label.endsWith('-01'))||curve[curve.length-1];t.push(tile('Curve: front → Jan',`${fmt(l.price-f,2)}`,`${l.label} ${fmt(l.price)} vs ${fmt(f)}`))}
-  if(st&&!st.error)t.push(tile('Storage (Bcf)',fmt(st.latest,0),`${sgn(st.change,0)} w/w · wk of ${st.asof}`,cls(-st.change)),tile('vs 5-yr avg',sgn(st.vs_avg5,0)+' Bcf',st.vs_year_ago!=null?`${sgn(st.vs_year_ago,0)} vs year ago`:'',cls(-st.vs_avg5)));
-  if(wx&&!wx.error)t.push(tile('15-day HDD / CDD',`${fmt(wx.hdd_15d,0)} / ${fmt(wx.cdd_15d,0)}`,'weighted forecast'));
+  $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA_API_KEY not set — storage, spot, production, exports, power burn and LNG proxy are unavailable (free key: eia.gov/opendata).';
+  const t=[];
+  if(ok(st))t.push(tile('Storage (Bcf)',fmt(st.latest,0),`${sgn(st.change,0)} w/w · wk ${st.asof}`,bull(-st.change)),
+                  tile('vs 5-yr avg',sgn(st.vs_avg5,0)+' Bcf',st.vs_year_ago!=null?`${sgn(st.vs_year_ago,0)} vs year ago`:'',bull(-st.vs_avg5)));
+  if(ok(fu)&&Array.isArray(fu.spot)){const s=fu.spot,l=s[s.length-1][1],p=s[s.length-2][1];t.push(tile('Henry Hub spot',fmt(l,3),`${sgn(l-p,3)} d/d`,bull(l-p)))}
+  if(ok(pw))t.push(tile('Power burn (7d avg)',fmt(pw.avg7,1)+' Bcf/d',pw.vs_ly7!=null?`${sgn(pw.vs_ly7,1)} vs last year`:'',bull(pw.vs_ly7)));
+  if(ok(rg))t.push(tile('US gas rigs',fmt(rg.latest,0),`${sgn(rg.wow,0)} w/w${rg.yoy!=null?' · '+sgn(rg.yoy,0)+' y/y':''}`,bull(-rg.wow)));
+  if(ok(lng)&&lng.days.length){const d=lng.days[lng.days.length-1];t.push(tile(lng.source=='eia_proxy'?'LNG exports (proxy)':'LNG feedgas',fmt(d[1],1)+' Bcf/d',d[0]))}
+  if(ok(cf))t.push(tile('Managed money net',fmt(cf.latest.mm_net,0),`${sgn(cf.change,0)} w/w · ${cf.pctile_3y}th pctile (3y)`,''));
+  if(ok(wx)){const T_=wx.totals,b=(T_.gfs_hdd+T_.ecmwf_hdd)/2,r=wx.rev_24h;
+    t.push(tile('15-day HDD (GFS/ECMWF avg)',fmt(b,0),r?`${sgn((r.gfs_hdd+r.ecmwf_hdd)/2,1)} vs 24h ago`:'building revision history…',r?bull((r.gfs_hdd+r.ecmwf_hdd)/2):''),
+           tile('GFS − ECMWF (15d HDD)',sgn(T_.gfs_hdd-T_.ecmwf_hdd,1),'model disagreement'))}
   $('tiles').innerHTML=t.join('');
-  if(m.ng&&!m.ng.error){drawPx();$('pxsub').textContent='Updated '+new Date().toLocaleTimeString()}else errBox('px',m.ng?.error||'no market data');
-  // curve
-  if(curve&&curve.length)draw('curve',{series:[{data:curve.map((c,i)=>[i,c.price]),color:'--b',dots:true}],cat:curve.map(c=>c.label.slice(2)),xTime:false});else errBox('curve','No curve data');
+
+  // weather models
+  if(ok(wx)){
+    const d=wx.days;vline=T(new Date().toISOString().slice(0,10));
+    draw('wx',{series:[{data:d.filter(r=>r.gfs).map(r=>[T(r.date),r.gfs.hdd]),color:'--a'},{data:d.filter(r=>r.ecmwf).map(r=>[T(r.date),r.ecmwf.hdd]),color:'--b'}]});
+    vline=null;
+    const g=wx.totals;$('wxsub').textContent=`Next 15d — GFS ${fmt(g.gfs_hdd,0)} HDD / ${fmt(g.gfs_cdd,0)} CDD · ECMWF ${fmt(g.ecmwf_hdd,0)} HDD / ${fmt(g.ecmwf_cdd,0)} CDD`;
+    const h=wx.history;
+    draw('rv',{series:[{data:h.map(x=>[x.ts,x.gfs_hdd]),color:'--a'},{data:h.map(x=>[x.ts,x.ecmwf_hdd]),color:'--b'}]});
+    $('rvsub').textContent=`${h.length} snapshot(s), taken hourly while the server runs`;
+    const row=(n,r)=>r?`<tr><td>${n}</td><td class="${bull(r.gfs_hdd)}">${sgn(r.gfs_hdd,1)}</td><td class="${bull(r.ecmwf_hdd)}">${sgn(r.ecmwf_hdd,1)}</td><td class="${bull(r.gfs_cdd)}">${sgn(r.gfs_cdd,1)}</td><td class="${bull(r.ecmwf_cdd)}">${sgn(r.ecmwf_cdd,1)}</td></tr>`:`<tr><td>${n}</td><td colspan=4 style="color:var(--mute)">not enough history yet</td></tr>`;
+    $('rvtab').innerHTML=`<table class="rv"><tr><th>Change in 15d total</th><th>GFS HDD</th><th>ECMWF HDD</th><th>GFS CDD</th><th>ECMWF CDD</th></tr>${row('vs ~6h ago',wx.rev_6h)}${row('vs ~24h ago',wx.rev_24h)}</table>`;
+  }else{errBox('wx',wx.error);errBox('rv',wx.error)}
   // storage
-  if(st&&!st.error){const w=st.weeks,x=w.map(r=>+new Date(r.period));
-    draw('stor',{band:w.filter(r=>r.min5!=null).map((r,i)=>[+new Date(r.period),r.min5,r.max5]),series:[{data:w.filter(r=>r.avg5!=null).map(r=>[+new Date(r.period),r.avg5]),color:'--mute',dash:'4 3',w:1.2},{data:w.map(r=>[+new Date(r.period),r.value]),color:'--a',w:2}]});
+  if(ok(st)){const w=st.weeks;
+    draw('stor',{band:w.filter(r=>r.min5!=null).map(r=>[T(r.period),r.min5,r.max5]),series:[{data:w.filter(r=>r.avg5!=null).map(r=>[T(r.period),r.avg5]),color:'--mute',dash:'4 3',w:1.2},{data:w.map(r=>[T(r.period),r.value]),color:'--a',w:2}]});
     $('stsub').textContent=`${fmt(st.latest,0)} Bcf, ${sgn(st.vs_avg5,0)} vs 5-yr avg (week ending ${st.asof})`}
-  else errBox('stor',st?.error||'unavailable');
-  // weather
-  if(wx&&!wx.error){draw('wx',{bars:[{data:wx.days.map((d,i)=>[i,d.hdd,d.forecast]),color:'--a'},{data:wx.days.map((d,i)=>[i,d.cdd,d.forecast]),color:'--dn'}],cat:wx.days.map(d=>d.date.slice(5))});
-    $('wxsub').textContent=`Past 7 days + 15-day forecast · next 15d: ${fmt(wx.hdd_15d,0)} HDD / ${fmt(wx.cdd_15d,0)} CDD`}
-  else errBox('wx',wx?.error||'unavailable');
+  else errBox('stor',st.error);
+  // power burn
+  if(ok(pw)){draw('pw',{series:[{data:pw.last_year.map(r=>[T(r[0]),r[1]]),color:'--mute',dash:'4 3',w:1.2},{data:line(pw.days),color:'--a'}]});$('pwsub').textContent=pw.note+' · through '+pw.asof}else errBox('pw',pw.error);
+  // CFTC
+  if(ok(cf)){const w=cf.weeks;draw('cf',{series:[{data:w.map(r=>[T(r.date),r.mm_net]),color:'--a',w:2},{data:w.map(r=>[T(r.date),r.prod_net]),color:'--c',w:1.2},{data:w.map(r=>[T(r.date),r.swap_net]),color:'--b',w:1.2}]});
+    $('cfsub').textContent=`Report date ${cf.asof} · MM long ${fmt(cf.latest.mm_long,0)} / short ${fmt(cf.latest.mm_short,0)} · OI ${fmt(cf.latest.oi,0)}`}else errBox('cf',cf.error);
+  // rigs
+  if(ok(rg)){draw('rg',{series:[{data:rg.weeks.map(r=>[T(r[0]),r[1]]),color:'--a',dots:rg.weeks.length<20}]});
+    $('rgsub').textContent=`${fmt(rg.latest,0)} gas rigs (week of ${rg.asof}) · ${rg.points} weekly point(s) stored`}else errBox('rg',rg.error+' — add data/rigs.csv (date,gas,oil) as a manual feed');
+  // LNG
+  if(ok(lng)){draw('lng',{series:[{data:line(lng.days),color:'--c',dots:lng.days.length<40}]});
+    $('lngsub').textContent=lng.source=='csv'?'From data/lng_feedgas.csv':lng.source=='demo'?'Demo':lng.note}else errBox('lng',lng.error);
   // fundamentals
-  const s=(k,el,color)=>{const d=fu[k];if(!d||d.error)return errBox(el,d?.error||fu.error||'unavailable');return draw(el,{series:[{data:d.map(r=>[+new Date(r[0]),r[1]]),color}]})};
-  if(fu&&!fu.error){s('spot','spot','--a');s('production','prod','--c');
-    if(!fu.lng_exports.error&&!fu.mexico_exports.error)draw('exp',{series:[{data:fu.lng_exports.map(r=>[+new Date(r[0]),r[1]]),color:'--a'},{data:fu.mexico_exports.map(r=>[+new Date(r[0]),r[1]]),color:'--c'}]});else errBox('exp',fu.lng_exports.error||fu.mexico_exports.error)}
-  else{['spot','prod','exp'].forEach(e=>errBox(e,fu?.error||'unavailable'))}
-  $('status').textContent='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 60s';
+  const s=(k,el,color)=>{const d=fu[k];if(!d||d.error)return errBox(el,d?.error||fu.error||'unavailable');draw(el,{series:[{data:line(d),color}]})};
+  if(ok(fu)){s('spot','spot','--a');s('production','prod','--c');
+    if(!fu.lng_exports.error&&!fu.mexico_exports.error)draw('exp',{series:[{data:line(fu.lng_exports),color:'--a'},{data:line(fu.mexico_exports),color:'--c'}]});else errBox('exp',fu.lng_exports.error||fu.mexico_exports.error)}
+  else['spot','prod','exp'].forEach(e=>errBox(e,fu.error));
+  $('status').textContent='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min';
 }
-refresh();setInterval(refresh,60000);
+refresh();setInterval(refresh,300000);
 </script></body></html>
