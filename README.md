@@ -48,7 +48,7 @@ The schedule card lists when each source is next expected with a countdown. **En
 | EIA STEO | Tuesday after the first Thursday, 12:00 ET (approx) |
 | EIA monthly production/exports | last weekday of month (approx) |
 
-Alerts only fire while the dashboard tab is open. Holiday weeks can shift releases.
+New data is detected per source, not only at the scheduled time: if EIA (or any source) publishes early or late, the next refresh or one-minute check announces it and the row shows "✓ updated HH:MM". If the source can't be read during a check, the row says so. Alerts only fire while the dashboard tab is open. Holiday weeks can shift releases.
 
 ## Run
 Easiest: start the server and paste your key into the box that appears at the top of the page; it is checked with EIA and saved in `data/eia_key.txt`. Alternatively put your free EIA key (https://www.eia.gov/opendata/) in a `.env` file next to `server.py` (copy `.env.example`; `.env` is gitignored) or export it:

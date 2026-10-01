@@ -166,6 +166,7 @@ async function refresh(){
   const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw,dry]=res;
   latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
   applyScores(await get('/api/scores'));
+  [...new Set(RELEASES.map(r=>r.api))].forEach(a=>checkNew(a,latest[a],false));
   $('banner').style.display=cfg.demo?'block':'none';
   $('keybox').style.display=(cfg.demo||cfg.eia)?'none':'block';
   if(cfg.diag&&!cfg.eia)$('keyDiag').textContent=`Looked for the key in: ${cfg.diag.folder}. Files found there starting with .env: ${cfg.diag.env_files.join(', ')||'none'}. Server version ${cfg.version}.`;
@@ -303,13 +304,13 @@ const RELEASES=[
   msg:d=>`Managed money net ${fmt(d.latest.mm_net,0)} (${sgn(d.change,0)} w/w)`},
  {id:'power',name:'EIA-930 power generation (daily)',api:'power',approx:true,next:f=>nextET(WK,11,0,f),sig:d=>d.asof,scores:['power_burn','renewables','nuclear'],
   msg:d=>`Power burn ${fmt(d.latest,1)} Bcf/d (7d avg ${fmt(d.avg7,1)})`},
- {id:'gfs',name:'GFS model run (00/06/12/18Z)',api:'weather',approx:true,next:f=>nextUTC([4,10,16,22],0,f),sig:d=>JSON.stringify(d.totals),scores:WXIDS,
+ {id:'gfs',fast:true,name:'GFS model run (00/06/12/18Z)',api:'weather',approx:true,next:f=>nextUTC([4,10,16,22],0,f),sig:d=>JSON.stringify(d.totals),scores:WXIDS,
   msg:d=>`GFS 15d: ${fmt(d.totals.gfs_hdd,0)} HDD / ${fmt(d.totals.gfs_cdd,0)} CDD${d.dev?` (${sgn(d.dev.gfs,0)} DD vs normal)`:''}`},
- {id:'ecmwf',name:'ECMWF IFS run (00/12Z)',api:'weather',approx:true,next:f=>nextUTC([8,20],0,f),sig:d=>JSON.stringify(d.totals),scores:WXIDS,
+ {id:'ecmwf',fast:true,name:'ECMWF IFS run (00/12Z)',api:'weather',approx:true,next:f=>nextUTC([8,20],0,f),sig:d=>JSON.stringify(d.totals),scores:WXIDS,
   msg:d=>`ECMWF 15d: ${fmt(d.totals.ecmwf_hdd,0)} HDD / ${fmt(d.totals.ecmwf_cdd,0)} CDD${d.dev?` (${sgn(d.dev.ecmwf,0)} DD vs normal)`:''}`},
  {id:'ngwu',name:'EIA Natural Gas Weekly Update',api:'ngwu',approx:true,next:f=>nextET([4],14,0,f),sig:d=>JSON.stringify([d.latest.week_end,d.latest.dry,d.latest.lng]),scores:['lng_weekly','dry_production'],
   msg:d=>`Dry production ${fmt(d.latest.dry,1)} Bcf/d (${sgn(d.latest.dry_wow,1)} w/w); LNG feedgas ${fmt(d.latest.lng,1)} Bcf/d (${sgn(d.latest.lng_wow,1)} w/w)`},
- {id:'nhc',name:'NHC advisories (when storms are active)',api:'tropics',next:f=>nextUTC([3,9,15,21],0,f),sig:d=>JSON.stringify(d.storms.map(s=>[s.id,s.kt,s.lat,s.lon])),scores:['hurricane'],
+ {id:'nhc',fast:true,name:'NHC advisories (when storms are active)',api:'tropics',next:f=>nextUTC([3,9,15,21],0,f),sig:d=>JSON.stringify(d.storms.map(s=>[s.id,s.kt,s.lat,s.lon])),scores:['hurricane'],
   msg:d=>d.storms.length?d.storms.slice(0,3).map(s=>`${s.name} ${s.classification} ${s.mph} mph, ${fmt(s.dist_km,0)} km from Gulf`).join('; '):'No active systems'},
  {id:'steo',name:'EIA Short-Term Energy Outlook (monthly)',api:'steo',approx:true,next:nextSteo,sig:d=>JSON.stringify(d.series.prod.slice(-18)),scores:[],
   msg:d=>`STEO marketed production ${fmt(d.series.prod.slice(-1)[0][1],1)} Bcf/d (${d.series.prod.slice(-1)[0][0]})`},
@@ -331,28 +332,47 @@ $('alBtn').onclick=async()=>{
   if(!alerts)notify('Alerts','Notifications blocked in browser settings; in-page alerts only.');else notify('Alerts on','You will be notified when each release is due and when new data lands, with its bullish/bearish score. Keep this tab open.');
   paintAlertBtn()};
 const dur=ms=>{const s=Math.max(0,Math.round(ms/1000)),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d?`${d}d ${h}h`:h?`${h}h ${m}m`:m?`${m}m ${s%60}s`:`${s}s`};
+// New data is detected per data source: whenever any refresh or poll sees a signature different from the last one
+// announced, we announce it, whatever the schedule says (releases can come early or late).
+const seen={},lastNew={};
+const releasesFor=api=>RELEASES.filter(r=>r.api===api);
+async function announce(api,d,refreshAfter){
+  const rs=releasesFor(api),before=COMP?COMP.value:null;
+  rs.forEach(r=>{lastNew[r.id]=Date.now();state[r.id].watch=null});
+  const sc=await get('/api/scores');applyScores(sc);
+  const ids=[...new Set(rs.flatMap(r=>r.scores))];
+  const parts=ids.map(id=>SC[id]).filter(Boolean).map(s=>`${s.metric}: ${s.label} (${sg(s.score)})`);
+  const comp=COMP&&COMP.value!=null?`Composite ${sg(COMP.value)} ${COMP.label}${before!=null&&before!==COMP.value?` (was ${sg(before)})`:''}`:'';
+  const title=rs.length>1?'New data: '+rs.map(r=>r.name.replace(/ \(.*\)/,'')).join(' / '):'New data: '+rs[0].name;
+  notify(title,[rs.map(r=>r.msg(d)).join('\n'),...parts,comp].filter(Boolean).join('\n'));
+  if(refreshAfter)refresh()}
+function checkNew(api,d,refreshAfter){
+  if(!d||d.error)return false;
+  const s=releasesFor(api)[0].sig(d);
+  if(seen[api]===undefined){seen[api]=s;return false}   // first load: remember, do not announce
+  if(s===seen[api])return false;
+  seen[api]=s;announce(api,d,refreshAfter);return true}
 async function watchTick(r,st){const w=st.watch;if(!w)return;
-  if(Date.now()-w.start>45*60000){st.watch=null;notify(r.name,'No new data after 45 min. Will keep the normal refresh.');return}
+  if(Date.now()-w.start>45*60000){st.watch=null;notify(r.name,'No new data after 45 min'+(w.err?` (last problem: ${w.err})`:'')+'. Will keep the normal refresh.');return}
   if(Date.now()<w.nextPoll)return;w.nextPoll=Date.now()+60000;
   const d=await get(`/api/${r.api}?fresh=1`);
-  if(d&&!d.error&&r.sig(d)!==w.baseline){st.watch=null;
-    const before=COMP?COMP.value:null;const sc=await get('/api/scores');applyScores(sc);
-    const parts=r.scores.map(id=>SC[id]).filter(Boolean).map(s=>`${s.metric}: ${s.label} (${sg(s.score)})`);
-    const comp=COMP&&COMP.value!=null?`Composite ${sg(COMP.value)} ${COMP.label}${before!=null&&before!==COMP.value?` (was ${sg(before)})`:''}`:'';
-    notify(`New data: ${r.name}`,[r.msg(d),...parts,comp].filter(Boolean).join('\n'));refresh()}}
+  if(!d||d.error){w.err=d?String(d.error).slice(0,90):'no response';return}
+  w.err=null;latest[r.api]=d;checkNew(r.api,d,true)}
 function scheduler(){
   const now=Date.now();let rows=[];
   for(const r of RELEASES){const st=state[r.id];
     if(now>=st.target){
-      const base=latest[r.api];
-      st.watch={start:now,nextPoll:now+30000,baseline:base&&!base.error?r.sig(base):null};
-      notify(`Due now: ${r.name}`,'Checking for the new numbers…');
-      st.target=r.next(now+1000)}
+      st.target=r.next(now+1000);
+      const early=r.fast?90*60e3:8*3600e3;   // already announced just before its due time? then there is nothing to wait for
+      if(!(lastNew[r.id]&&now-lastNew[r.id]<early)){
+        st.watch={start:now,nextPoll:now+30000,err:null};
+        notify(`Due now: ${r.name}`,'Checking for the new numbers…')}}
     watchTick(r,st);
     rows.push({r,st})}
   rows.sort((a,b)=>a.st.target-b.st.target);
-  $('relBody').innerHTML=rows.map(({r,st})=>{const left=st.target-now;
-    const status=st.watch?'<span class="chk">checking for update…</span>':left<3600e3?'<span class="soon">due within the hour</span>':'';
+  $('relBody').innerHTML=rows.map(({r,st})=>{const left=st.target-now,got=lastNew[r.id]&&now-lastNew[r.id]<3*3600e3;
+    const status=st.watch?(st.watch.err?`<span class="dn" title="${esc(st.watch.err)}">couldn't read the source, retrying…</span>`:`<span class="chk">checking for update… (${dur(now-st.watch.start)})</span>`)
+      :got?`<span class="up">✓ updated ${new Date(lastNew[r.id]).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</span>`:left<3600e3?'<span class="soon">due within the hour</span>':'';
     return `<tr><td>${r.name}</td><td>${r.approx?'~ ':''}${new Date(st.target).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td class="${left<3600e3?'soon':''}">${dur(left)}</td><td>${status}</td></tr>`}).join('');
 }
 $('keyBtn').onclick=async()=>{const m=$('keyMsg');m.textContent='Checking the key with EIA…';m.className='';

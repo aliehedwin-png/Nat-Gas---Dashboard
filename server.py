@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-01.3"
+VERSION = "2026-10-01.4"
 KEY_SOURCE = "none"
 
 
