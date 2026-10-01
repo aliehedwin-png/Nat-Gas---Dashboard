@@ -313,7 +313,7 @@ def api_fundamentals():
         try:
             out[k] = cached("fund_" + k, 3600, lambda k=k: one(k))
         except Exception as e:
-            out[k] = {"error": str(e)}
+            out[k] = {"error": friendly(e)}
     return out
 
 
@@ -920,6 +920,20 @@ CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals
               "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu", "/api/dry": "dry"}
 
 
+def friendly(e):
+    """Plain-English version of the common failures (the raw text stays in brackets for debugging)."""
+    t = str(e)
+    if "EIA_API_KEY not set" in t:
+        return "EIA key missing: paste it into the box at the top of the page."
+    if "HTTP Error 429" in t:
+        return "The data source is limiting requests right now. It will retry automatically (details: " + t[:60] + ")"
+    if "HTTP Error 403" in t or "HTTP Error 401" in t:
+        return "The data source refused the request. If this is EIA, check the key. (" + t[:60] + ")"
+    if any(x in t for x in ("urlopen error", "timed out", "Connection", "Remote end closed", "Name or service")):
+        return "Could not reach the data source. Check your internet connection. (" + t[:70] + ")"
+    return t
+
+
 def set_eia_key(key):
     """Validate a pasted key against EIA, then use it now and remember it in data/eia_key.txt."""
     global EIA_KEY, KEY_SOURCE
@@ -987,7 +1001,7 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 return self.send_json(ROUTES[path]())
             except Exception as e:
-                return self.send_json({"error": str(e)}, 502)
+                return self.send_json({"error": friendly(e)}, 502)
         return super().do_GET()
 
     def do_POST(self):
