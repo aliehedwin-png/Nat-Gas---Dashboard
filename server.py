@@ -2,7 +2,8 @@
 """Natural gas fundamentals dashboard: static frontend + cached JSON API (stdlib only).
 
 Env:
-  EIA_API_KEY  free key from https://www.eia.gov/opendata/ (storage, spot, production, exports, power, STEO)
+  EIA_API_KEY  free key from https://www.eia.gov/opendata/ (storage, spot, production, exports, power, STEO);
+               may also be set in a .env file next to server.py (gitignored)
   NG_DEMO=1    serve synthetic data (for UI development / offline use)
   PORT         default 8000
 
@@ -21,6 +22,21 @@ import scoring
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
+
+
+def load_dotenv(path):
+    """Minimal .env reader (KEY=VALUE per line); real environment variables win."""
+    try:
+        for line in open(path):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    except OSError:
+        pass
+
+
+load_dotenv(os.path.join(ROOT, ".env"))
 EIA_KEY = os.environ.get("EIA_API_KEY", "")
 DEMO = os.environ.get("NG_DEMO") == "1"
 UA = {"User-Agent": "Mozilla/5.0 (ng-dashboard)"}

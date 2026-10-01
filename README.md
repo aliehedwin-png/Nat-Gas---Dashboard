@@ -51,8 +51,10 @@ The schedule card lists when each source is next expected with a countdown. **En
 Alerts only fire while the dashboard tab is open. Holiday weeks can shift releases.
 
 ## Run
+Put your free EIA key (https://www.eia.gov/opendata/) in a `.env` file next to `server.py` (copy `.env.example`; `.env` is gitignored) or export it:
 ```
-export EIA_API_KEY=xxxx        # free: https://www.eia.gov/opendata/
+cp .env.example .env           # then edit EIA_API_KEY=...
+# or: export EIA_API_KEY=xxxx
 python3 server.py              # http://localhost:8000
 NG_DEMO=1 python3 server.py    # synthetic data, no network
 ```
