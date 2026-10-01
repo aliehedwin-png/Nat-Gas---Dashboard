@@ -24,6 +24,10 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
+VERSION = "2026-10-01.3"
+KEY_SOURCE = "none"
+
+
 def load_dotenv(path):
     """Minimal .env reader (KEY=VALUE per line); real environment variables win, blank values are ignored."""
     try:
@@ -35,11 +39,27 @@ def load_dotenv(path):
                     k, v = k.strip(), v.strip().strip('"').strip("'").strip()
                     if v and not os.environ.get(k):
                         os.environ[k] = v
+                        return os.path.basename(path)
     except OSError:
         pass
+    return None
 
 
-load_dotenv(os.path.join(ROOT, ".env"))
+if os.environ.get("EIA_API_KEY"):
+    KEY_SOURCE = "environment variable"
+for _name in (".env", ".env.txt"):  # .env.txt: Notepad often appends .txt
+    if not os.environ.get("EIA_API_KEY") and load_dotenv(os.path.join(ROOT, _name)):
+        KEY_SOURCE = _name
+KEY_FILE = os.path.join(DATA, "eia_key.txt")  # written by the in-page "Save key" box
+if not os.environ.get("EIA_API_KEY"):
+    try:
+        with open(KEY_FILE, encoding="utf-8-sig") as _f:
+            _k = _f.read().strip()
+        if _k:
+            os.environ["EIA_API_KEY"] = _k
+            KEY_SOURCE = "saved from the dashboard"
+    except OSError:
+        pass
 EIA_KEY = os.environ.get("EIA_API_KEY", "")
 DEMO = os.environ.get("NG_DEMO") == "1"
 UA = {"User-Agent": "Mozilla/5.0 (ng-dashboard)"}
@@ -883,6 +903,42 @@ CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals
               "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu", "/api/dry": "dry"}
 
 
+def set_eia_key(key):
+    """Validate a pasted key against EIA, then use it now and remember it in data/eia_key.txt."""
+    global EIA_KEY, KEY_SOURCE
+    key = (key or "").strip().strip('"').strip("'").strip()
+    if not re.fullmatch(r"[A-Za-z0-9]{20,60}", key):
+        raise ValueError("That does not look like an EIA key (letters and numbers only, about 40 characters). Check for extra spaces.")
+    url = ("https://api.eia.gov/v2/natural-gas/stor/wkly/data/?" +
+           urllib.parse.urlencode({"api_key": key, "frequency": "weekly", "data[0]": "value", "length": "1"}))
+    try:
+        http_get(url, 20)
+    except OSError as e:
+        text = str(e)
+        if "429" in text:
+            pass  # valid key, just rate limited right now
+        elif "403" in text or "401" in text or "400" in text:
+            raise ValueError("EIA rejected this key. Copy it again from the EIA email.")
+        else:
+            raise ValueError("Could not reach EIA to check the key (" + text[:80] + "). Check your internet connection.")
+    os.makedirs(DATA, exist_ok=True)
+    with open(KEY_FILE, "w") as f:
+        f.write(key)
+    os.environ["EIA_API_KEY"] = key
+    EIA_KEY, KEY_SOURCE = key, "saved from the dashboard"
+    for k in list(_cache):  # drop anything cached while the key was missing
+        if k not in ("normals",):
+            _cache.pop(k, None)
+
+
+def diag():
+    try:
+        env_files = sorted(n for n in os.listdir(ROOT) if n.lower().startswith(".env") or n.lower().startswith("env"))
+    except OSError:
+        env_files = []
+    return {"folder": ROOT, "env_files": env_files, "key_source": KEY_SOURCE, "key_loaded": bool(EIA_KEY)}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=os.path.join(ROOT, "static"), **kw)
@@ -890,7 +946,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/config":
-            return self.send_json({"demo": DEMO, "eia": bool(EIA_KEY),
+            return self.send_json({"demo": DEMO, "eia": bool(EIA_KEY), "version": VERSION, "diag": diag(),
                                    "stale": {k: v["error"] for k, v in _meta.items() if v.get("stale")}})
         if path in ROUTES:
             if "fresh" in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query):
@@ -902,6 +958,20 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:
                 return self.send_json({"error": str(e)}, 502)
         return super().do_GET()
+
+    def do_POST(self):
+        if urllib.parse.urlparse(self.path).path != "/api/setkey":
+            return self.send_json({"error": "not found"}, 404)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > 2000:
+                raise ValueError("Request too large.")
+            set_eia_key(json.loads(self.rfile.read(n) or b"{}").get("key"))
+            return self.send_json({"ok": True})
+        except ValueError as e:
+            return self.send_json({"error": str(e)}, 400)
+        except Exception as e:
+            return self.send_json({"error": "Could not save the key: " + str(e)}, 500)
 
     def send_json(self, obj, status=200):
         body = json.dumps(obj).encode()
@@ -917,8 +987,15 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    print(f"Serving on http://localhost:{port}  demo={DEMO}  eia_key={'yes' if EIA_KEY else 'NO'}", file=sys.stderr)
+    host = os.environ.get("HOST", "127.0.0.1")  # this computer only; set HOST=0.0.0.0 to share on your network
+    try:
+        server = ThreadingHTTPServer((host, port), Handler)
+    except OSError as e:
+        print(f"\n*** Could not start on port {port}: {e}\n"
+              f"    The dashboard is probably already running in another window. Open http://localhost:{port}\n"
+              f"    or close that window first. To use a different port: set PORT=8001 and start again. ***\n", file=sys.stderr)
+        sys.exit(1)
+    print(f"Dashboard version {VERSION} serving on http://localhost:{port}  demo={DEMO}  eia_key={'yes (' + KEY_SOURCE + ')' if EIA_KEY else 'NO'}", file=sys.stderr)
     if not EIA_KEY and not DEMO:
-        print("\n*** No EIA key found. Open the file named .env in this folder with Notepad and make it read:\n"
-              "      EIA_API_KEY=your_key_here\n    (no spaces or quotes), save it, then restart. ***\n", file=sys.stderr)
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+        print("\n*** No EIA key found yet. Open http://localhost:%d and paste the key into the box at the top of the page. ***\n" % port, file=sys.stderr)
+    server.serve_forever()

@@ -51,11 +51,11 @@ The schedule card lists when each source is next expected with a countdown. **En
 Alerts only fire while the dashboard tab is open. Holiday weeks can shift releases.
 
 ## Run
-Put your free EIA key (https://www.eia.gov/opendata/) in a `.env` file next to `server.py` (copy `.env.example`; `.env` is gitignored) or export it:
+Easiest: start the server and paste your key into the box that appears at the top of the page; it is checked with EIA and saved in `data/eia_key.txt`. Alternatively put your free EIA key (https://www.eia.gov/opendata/) in a `.env` file next to `server.py` (copy `.env.example`; `.env` is gitignored) or export it:
 ```
 cp .env.example .env           # then edit EIA_API_KEY=...
 # or: export EIA_API_KEY=xxxx
-python3 server.py              # http://localhost:8000
+python3 server.py              # http://localhost:8000 (this computer only; HOST=0.0.0.0 to share on your network)
 NG_DEMO=1 python3 server.py    # synthetic data, no network
 ```
 Server caches responses (weather 30 min, most EIA 1h, CFTC/rigs/STEO 6h, weather normals ~1 year) and persists them in `data/cache.json`, so restarts don't re-spend API quota; if a refresh fails it serves the last good data and the page flags it.

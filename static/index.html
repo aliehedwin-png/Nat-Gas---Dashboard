@@ -39,6 +39,10 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
 </style></head><body>
 <header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading…</div></header>
 <div class="banner" id="banner"></div>
+<div id="keybox" style="display:none;background:var(--card);color:var(--text);border-bottom:2px solid var(--b);padding:12px 16px">
+ <b>EIA key needed.</b> Paste it here (it is checked with EIA, then saved on this computer only):
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input id="keyIn" type="text" autocomplete="off" spellcheck="false" placeholder="Paste your EIA API key" style="flex:1;min-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--text)"><button class="al" id="keyBtn">Save key</button></div>
+ <div id="keyMsg" style="margin-top:6px;font-size:12px"></div><div id="keyDiag" style="margin-top:6px;font-size:11px;color:var(--mute)"></div></div>
 <div class="tiles" id="tiles"></div>
 <div class="grid">
  <h3 class="sec">Bullish / bearish score</h3>
@@ -162,9 +166,11 @@ async function refresh(){
   const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw,dry]=res;
   latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
   applyScores(await get('/api/scores'));
-  $('banner').style.display=cfg.demo||!cfg.eia?'block':'none';
+  $('banner').style.display=cfg.demo?'block':'none';
+  $('keybox').style.display=(cfg.demo||cfg.eia)?'none':'block';
+  if(cfg.diag&&!cfg.eia)$('keyDiag').textContent=`Looked for the key in: ${cfg.diag.folder}. Files found there starting with .env: ${cfg.diag.env_files.join(', ')||'none'}. Server version ${cfg.version}.`;
   $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA key not found — storage, spot, production, exports, power, STEO and LNG panels are unavailable. Put EIA_API_KEY=your_key in the .env file next to server.py and restart (free key: eia.gov/opendata).';
-  const stale=Object.entries(cfg.stale||{});
+  const stale=Object.entries(cfg.stale||{});window._ver=cfg.version||'';
 
   // tiles
   const tile=(l,v,s,id,c='')=>`<div class="tile"><div class="l">${l}</div><div class="v">${v}</div><div class="s ${c}">${s||'&nbsp;'}</div><div class="bdw">${id?badge(id):''}</div></div>`;
@@ -267,7 +273,7 @@ async function refresh(){
     tblEl('trTab',s_.length?`<table class="t"><thead><tr><th>Storm</th><th>Class</th><th>Wind</th><th>Distance</th><th>Gulf?</th></tr></thead><tbody>${s_.map(x=>`<tr><td>${x.url?`<a href="${x.url}" target="_blank" rel="noopener" style="color:var(--a)">${x.name}</a>`:x.name}${x.atlantic?'':' <span style="color:var(--mute)">(Pacific)</span>'}</td><td>${x.classification}</td><td>${x.mph} mph</td><td>${fmt(x.dist_km,0)} km</td><td>${x.in_gulf?'<b class="dn">in Gulf</b>':'–'}</td></tr>`).join('')}</tbody></table>`:'')}
   else tblEl('trTab','',tr.error);
 
-  $('status').innerHTML='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min'+(stale.length?` · <span class="dn" title="${esc(stale.map(([k,v])=>k+': '+v).join('\n'))}">⚠ showing cached data for ${stale.map(x=>x[0]).join(', ')}</span>`:'');
+  $('status').innerHTML='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min'+(window._ver?' · v'+window._ver:'')+(stale.length?` · <span class="dn" title="${esc(stale.map(([k,v])=>k+': '+v).join('\n'))}">⚠ showing cached data for ${stale.map(x=>x[0]).join(', ')}</span>`:'');
 }
 
 // ---------- Release schedule + alerts ----------
@@ -349,6 +355,10 @@ function scheduler(){
     const status=st.watch?'<span class="chk">checking for update…</span>':left<3600e3?'<span class="soon">due within the hour</span>':'';
     return `<tr><td>${r.name}</td><td>${r.approx?'~ ':''}${new Date(st.target).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td class="${left<3600e3?'soon':''}">${dur(left)}</td><td>${status}</td></tr>`}).join('');
 }
+$('keyBtn').onclick=async()=>{const m=$('keyMsg');m.textContent='Checking the key with EIA…';m.className='';
+  try{const r=await fetch('/api/setkey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('keyIn').value})});const j=await r.json();
+    if(j.ok){m.textContent='Key saved. Loading data…';m.className='up';$('keyIn').value='';await refresh()}else{m.textContent=j.error||'Could not save the key.';m.className='dn'}}
+  catch(e){m.textContent='Could not reach the dashboard server: '+e;m.className='dn'}};
 paintAlertBtn();scheduler();setInterval(scheduler,1000);
 refresh();setInterval(refresh,300000);
 </script></body></html>
