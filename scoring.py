@@ -164,7 +164,7 @@ def compute(d, cfg=None):
             if cur.get("dry_wow") is not None:
                 add("dry_production", tier(-cur["dry_wow"], .5, 1.5),
                     f"Dry production {cur['dry']:.1f} Bcf/d, {cur['dry_wow']:+.1f} w/w (week ending {cur['week_end']})")
-        elif dry.get("source") in ("steo_estimate", "eia_monthly") and len(v) >= 4:
+        elif dry.get("source") in ("steo_estimate", "eia_monthly", "demo") and len(v) >= 4:
             x = v[-1] - mean(v[-4:-1])
             add("dry_production", tier(-x, .5, 1.5), f"{dry['asof']} dry production {v[-1]:.1f} Bcf/d vs prior-3-month avg ({x:+.1f})"
                 + (" [EIA estimate]" if dry.get("source") == "steo_estimate" else ""))

@@ -10,7 +10,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:12p
 h1{font-size:16px;margin:0}#status{color:var(--mute);font-size:12px}
 .banner{background:var(--b);color:#000;padding:6px 16px;font-size:12px;display:none}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding:12px 16px}
-.tile,.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}
+.tile,.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;min-width:0}.card{overflow-x:auto}.score>div{min-width:0}
 .tile .l{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
 .tile .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.tile .s{font-size:12px;font-variant-numeric:tabular-nums;color:var(--mute)}.tile .bdw{margin-top:4px;min-height:20px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px;padding:0 16px 16px}
@@ -37,7 +37,7 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
 #toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:9}#toast div{background:var(--card);border:1px solid var(--a);border-radius:8px;padding:10px 14px;max-width:380px;box-shadow:0 4px 16px #0004}
 .note{font-size:11px;color:var(--mute);padding:0 16px 20px}
 </style></head><body>
-<header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading…</div></header>
+<header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading… first start can take a minute</div></header>
 <div class="banner" id="banner"></div>
 <div id="keybox" style="display:none;background:var(--card);color:var(--text);border-bottom:2px solid var(--b);padding:12px 16px">
  <b>EIA key needed.</b> Paste it here (it is checked with EIA, then saved on this computer only):
@@ -106,6 +106,7 @@ const sgn=(n,d=2)=>n==null?'–':(n>=0?'+':'')+fmt(n,d);
 const bull=n=>n==null||n===0?'':n>0?'up':'dn';
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const T=s=>+new Date(s);
+const STALE_NAMES={storage:'storage',storage_regions:'storage',fund_spot:'Henry Hub spot',fund_production:'dry production (monthly)',fund_lng_exports:'LNG exports',fund_mexico_exports:'Mexico exports',power:'power burn',nuclear:'nuclear outages',cftc:'CFTC positioning',rigs:'rig counts',lng:'LNG',dry:'dry production',steo:'EIA outlook',weather:'weather',prodwx:'freeze watch',tropics:'tropical watch',ngwu:'EIA weekly update'};
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 let W=640,vline=null;const H=220,M={l:52,r:10,t:8,b:20};
 
@@ -132,6 +133,8 @@ function draw(el,{series=[],band=null,cat=null,yFmt=v=>Math.abs(v)>=1e6?(v/1e6).
   if(vline!=null&&!cat&&vline>x0&&vline<x1)el_('line',{x1:sx(vline),x2:sx(vline),y1:M.t,y2:H-M.b,stroke:css('--mute'),'stroke-dasharray':'3 3','stroke-width':.8});
 }
 const get=u=>fetch(u).then(r=>r.json()).catch(e=>({error:String(e)}));
+const LOADING={error:'Still loading… the first run downloads weather history and can take a minute. This fills in automatically.',loading:true};
+const getSlow=(u,ms=12000)=>Promise.race([get(u),new Promise(r=>setTimeout(()=>r(LOADING),ms))]);
 const errBox=(el,m)=>{const svg=$(el);svg.innerHTML='';let e=svg.parentNode.querySelector(`.err[data-for="${el}"]`);if(!e){e=document.createElement('div');e.className='err';e.dataset.for=el;svg.after(e)}e.textContent=m;e.hidden=false;svg.style.display='none'};
 const okBox=el=>{const e=$(el).parentNode.querySelector(`.err[data-for="${el}"]`);if(e)e.hidden=true;$(el).style.display=''};
 const ok=x=>x&&!x.error;
@@ -162,10 +165,13 @@ function applyScores(sc){
 // ---------- refresh ----------
 async function refresh(){
   const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo','ngwu','dry'];
-  const res=await Promise.all(names.map(x=>get('/api/'+x)));
+  const res=await Promise.all(names.map(x=>getSlow('/api/'+x)));
   const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw,dry]=res;
   latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
-  applyScores(await get('/api/scores'));
+  const anyLoading=res.some(x=>x&&x.loading);   // scores need every source, so skip them until the slow ones are ready
+  const sc0=anyLoading?LOADING:await getSlow('/api/scores');if(!(sc0&&sc0.loading))applyScores(sc0);
+  const anyErr=cfg.eia&&res.slice(1).some(x=>x&&x.error&&!x.loading);   // a source failed (network blip?): retry soon rather than in 5 minutes
+  clearTimeout(window._retry);if(anyLoading||(sc0&&sc0.loading))window._retry=setTimeout(refresh,8000);else if(anyErr)window._retry=setTimeout(refresh,45000);
   [...new Set(RELEASES.map(r=>r.api))].forEach(a=>checkNew(a,latest[a],false));
   $('banner').style.display=cfg.demo?'block':'none';
   $('keybox').style.display=(cfg.demo||cfg.eia)?'none':'block';
@@ -274,7 +280,7 @@ async function refresh(){
     tblEl('trTab',s_.length?`<table class="t"><thead><tr><th>Storm</th><th>Class</th><th>Wind</th><th>Distance</th><th>Gulf?</th></tr></thead><tbody>${s_.map(x=>`<tr><td>${x.url?`<a href="${x.url}" target="_blank" rel="noopener" style="color:var(--a)">${x.name}</a>`:x.name}${x.atlantic?'':' <span style="color:var(--mute)">(Pacific)</span>'}</td><td>${x.classification}</td><td>${x.mph} mph</td><td>${fmt(x.dist_km,0)} km</td><td>${x.in_gulf?'<b class="dn">in Gulf</b>':'–'}</td></tr>`).join('')}</tbody></table>`:'')}
   else tblEl('trTab','',tr.error);
 
-  $('status').innerHTML='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min'+(window._ver?' · v'+window._ver:'')+(stale.length?` · <span class="dn" title="${esc(stale.map(([k,v])=>k+': '+v).join('\n'))}">⚠ showing cached data for ${stale.map(x=>x[0]).join(', ')}</span>`:'');
+  $('status').innerHTML='Last refresh '+new Date().toLocaleTimeString()+' · auto-refresh 5 min'+(window._ver?' · v'+window._ver:'')+(stale.length?` · <span class="dn" title="${esc(stale.map(([k,v])=>k+': '+v).join('\n'))}">⚠ could not refresh, showing older saved data for ${[...new Set(stale.map(x=>STALE_NAMES[x[0]]||x[0]))].join(', ')}</span>`:'');
 }
 
 // ---------- Release schedule + alerts ----------

@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-01.4"
+VERSION = "2026-10-01.5"
 KEY_SOURCE = "none"
 
 
@@ -99,26 +99,41 @@ if not DEMO:
     _cache.update({k: tuple(v) for k, v in load_json("cache.json", {}).items()})
 
 
+_locks = {}
+_fail = {}          # key -> (timestamp, error): a source that just failed is not retried for FAIL_COOLDOWN seconds
+FAIL_COOLDOWN = 45
+
+
 def cached(key, ttl, fn):
-    hit = _cache.get(key)
-    if hit and time.time() - hit[0] < ttl:
-        return hit[1]
-    try:
-        val = fn()
-    except Exception as e:
-        if hit:  # serve last good data rather than an error, but flag it
-            _meta[key] = {"stale": True, "error": str(e)}
+    lock = _locks.setdefault(key, threading.Lock())
+    with lock:  # one fetch per key at a time; a second caller waits and then reads the fresh cache
+        hit = _cache.get(key)
+        if hit and time.time() - hit[0] < ttl:
             return hit[1]
-        raise
-    _meta[key] = {"stale": False, "error": ""}
-    with _lock:
-        _cache[key] = (time.time(), val)
-        if not DEMO:
-            try:
-                save_json("cache.json", {k: list(v) for k, v in _cache.items()})
-            except Exception:
-                pass
-    return val
+        f = _fail.get(key)
+        if f and time.time() - f[0] < FAIL_COOLDOWN:  # failed moments ago: answer at once instead of waiting through retries again
+            if hit:
+                _meta[key] = {"stale": True, "error": f[1]}
+                return hit[1]
+            raise RuntimeError(f[1])
+        try:
+            val = fn()
+        except Exception as e:
+            _fail[key] = (time.time(), str(e))
+            if hit:  # serve last good data rather than an error, but flag it
+                _meta[key] = {"stale": True, "error": str(e)}
+                return hit[1]
+            raise
+        _fail.pop(key, None)
+        _meta[key] = {"stale": False, "error": ""}
+        with _lock:
+            _cache[key] = (time.time(), val)
+            if not DEMO:
+                try:
+                    save_json("cache.json", {k: list(v) for k, v in _cache.items()})
+                except Exception:
+                    pass
+        return val
 
 
 def http_get(url, timeout=25, headers=UA):
@@ -127,8 +142,10 @@ def http_get(url, timeout=25, headers=UA):
             with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as r:
                 return r.read()
         except (TimeoutError, OSError) as e:
-            if attempt == 3 or "HTTP Error" in str(e):
+            code = getattr(e, "code", 0)  # 4xx (bad key, rate limit) will not fix itself in a second; 5xx and network blips might
+            if attempt == 3 or (isinstance(code, int) and 400 <= code < 500):
                 raise
+            time.sleep(attempt)  # brief backoff: a connection blip often clears in a second or two
 
 
 def http_json(url, timeout=25):
@@ -906,7 +923,9 @@ CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals
 def set_eia_key(key):
     """Validate a pasted key against EIA, then use it now and remember it in data/eia_key.txt."""
     global EIA_KEY, KEY_SOURCE
-    key = (key or "").strip().strip('"').strip("'").strip()
+    if not isinstance(key, str):
+        raise ValueError("Paste the key as text.")
+    key = key.strip().strip('"').strip("'").strip()
     if not re.fullmatch(r"[A-Za-z0-9]{20,60}", key):
         raise ValueError("That does not look like an EIA key (letters and numbers only, about 40 characters). Check for extra spaces.")
     url = ("https://api.eia.gov/v2/natural-gas/stor/wkly/data/?" +
@@ -929,6 +948,16 @@ def set_eia_key(key):
     for k in list(_cache):  # drop anything cached while the key was missing
         if k not in ("normals",):
             _cache.pop(k, None)
+    threading.Thread(target=warm_up, daemon=True).start()
+
+
+def warm_up():
+    """Fetch everything once in the background so the first page load is quick (weather normals download ~10 years of history)."""
+    for fn in (api_weather, api_storage, api_power, api_fundamentals, api_cftc, api_rigs, api_dry, api_lng, api_steo, api_prodwx, api_tropics, api_ngwu):
+        try:
+            fn()
+        except Exception:
+            pass
 
 
 def diag():
@@ -950,9 +979,11 @@ class Handler(SimpleHTTPRequestHandler):
                                    "stale": {k: v["error"] for k, v in _meta.items() if v.get("stale")}})
         if path in ROUTES:
             if "fresh" in urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query):
-                keys = CACHE_KEYS.get(path, ())  # bypass cache to catch a new release
-                for k in ([keys] if isinstance(keys, str) else keys):
-                    _cache.pop(k, None)
+                keys = CACHE_KEYS.get(path, ())  # expire the cache to catch a new release, but keep the old value
+                for k in ([keys] if isinstance(keys, str) else keys):  # as a fallback if the refresh fails
+                    _fail.pop(k, None)  # a forced refresh ignores the failure cooldown
+                    if k in _cache:
+                        _cache[k] = (0, _cache[k][1])
             try:
                 return self.send_json(ROUTES[path]())
             except Exception as e:
@@ -998,4 +1029,5 @@ if __name__ == "__main__":
     print(f"Dashboard version {VERSION} serving on http://localhost:{port}  demo={DEMO}  eia_key={'yes (' + KEY_SOURCE + ')' if EIA_KEY else 'NO'}", file=sys.stderr)
     if not EIA_KEY and not DEMO:
         print("\n*** No EIA key found yet. Open http://localhost:%d and paste the key into the box at the top of the page. ***\n" % port, file=sys.stderr)
+    threading.Thread(target=warm_up, daemon=True).start()
     server.serve_forever()

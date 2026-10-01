@@ -60,6 +60,11 @@ NG_DEMO=1 python3 server.py    # synthetic data, no network
 ```
 Server caches responses (weather 30 min, most EIA 1h, CFTC/rigs/STEO 6h, weather normals ~1 year) and persists them in `data/cache.json`, so restarts don't re-spend API quota; if a refresh fails it serves the last good data and the page flags it.
 
+## Reliability
+- First start downloads ten years of weather history for the normals (about a minute); the server does this in the background and the page fills in by itself.
+- If a source fails, the last good data is served and the page says which panels are older; a failed source is not retried for 45 seconds (so a down source never stalls the page). A forced refresh (release checks) ignores that pause.
+- Tested: all endpoints on live and demo data, scoring edge cases, phone/tablet/desktop widths, dark mode, three time zones, DST and month/year-end release dates, network down with and without saved data.
+
 ## Caveats
 - **Dry gas production source order:** EIA Natural Gas Weekly Update if under 12 days old > EIA monthly actuals (series N9070US2, which is *dry* production) extended with the STEO estimate for months not yet published (monthly, not weekly; labelled as an estimate). Earlier versions mislabelled the monthly N9070US2 panel as "marketed" production; it is dry production. STEO's separate marketed-production outlook (NGMPPUS) is unchanged.
 - **LNG feedgas source order:** daily CSV (`data/lng_feedgas.csv`) > EIA Natural Gas Weekly Update if under 12 days old > EIA STEO current-month estimate of LNG gross exports (monthly, approximate feedgas) > EIA monthly actuals. The card and tile state which one is shown and its date. No free source of a current weekly or daily feedgas figure was reachable when this was built; the EIA weekly page available there was frozen at the Jan 21, 2026 report, so its weekly cards are hidden while stale.
