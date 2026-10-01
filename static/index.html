@@ -163,7 +163,7 @@ async function refresh(){
   latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
   applyScores(await get('/api/scores'));
   $('banner').style.display=cfg.demo||!cfg.eia?'block':'none';
-  $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA_API_KEY not set — storage, spot, production, exports, power, STEO and LNG proxy are unavailable (free key: eia.gov/opendata).';
+  $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA key not found — storage, spot, production, exports, power, STEO and LNG panels are unavailable. Put EIA_API_KEY=your_key in the .env file next to server.py and restart (free key: eia.gov/opendata).';
   const stale=Object.entries(cfg.stale||{});
 
   // tiles

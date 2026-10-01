@@ -25,13 +25,16 @@ DATA = os.path.join(ROOT, "data")
 
 
 def load_dotenv(path):
-    """Minimal .env reader (KEY=VALUE per line); real environment variables win."""
+    """Minimal .env reader (KEY=VALUE per line); real environment variables win, blank values are ignored."""
     try:
-        for line in open(path):
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+        with open(path, encoding="utf-8-sig") as f:  # utf-8-sig tolerates a Windows Notepad BOM
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k, v = k.strip(), v.strip().strip('"').strip("'").strip()
+                    if v and not os.environ.get(k):
+                        os.environ[k] = v
     except OSError:
         pass
 
@@ -915,4 +918,7 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     print(f"Serving on http://localhost:{port}  demo={DEMO}  eia_key={'yes' if EIA_KEY else 'NO'}", file=sys.stderr)
+    if not EIA_KEY and not DEMO:
+        print("\n*** No EIA key found. Open the file named .env in this folder with Notepad and make it read:\n"
+              "      EIA_API_KEY=your_key_here\n    (no spaces or quotes), save it, then restart. ***\n", file=sys.stderr)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
