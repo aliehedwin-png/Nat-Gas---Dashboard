@@ -38,6 +38,11 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
 .note{font-size:11px;color:var(--mute);padding:0 16px 20px}
 </style></head><body>
 <header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading… first start can take a minute</div></header>
+<div id="nosrv" style="display:none;background:var(--card);border-bottom:2px solid var(--dn);padding:14px 16px;line-height:1.5">
+ <b class="dn">This page is not connected to the dashboard program.</b><br>
+ Start the program first: <b>Windows</b>: double-click <i>Start Dashboard (Windows).bat</i>. <b>Mac</b>: open <i>Start Dashboard (Mac).command</i>. Leave its window open, then go to <b>http://localhost:8000</b> in your browser.
+ Opening the <i>index.html</i> file directly does not work. This page keeps checking and will connect on its own once the program is running.</div>
+<div id="loadnote" style="display:none;background:var(--card);border-bottom:2px solid var(--a);padding:10px 16px;font-size:13px"><b>Getting your data for the first time.</b> This can take 1 to 2 minutes. Panels fill in on their own; you do not need to do anything.</div>
 <div class="banner" id="banner"></div>
 <div id="keybox" style="display:none;background:var(--card);color:var(--text);border-bottom:2px solid var(--b);padding:12px 16px">
  <b>EIA key needed.</b> Paste it here (it is checked with EIA, then saved on this computer only):
@@ -167,8 +172,12 @@ async function refresh(){
   const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo','ngwu','dry'];
   const res=await Promise.all(names.map(x=>getSlow('/api/'+x)));
   const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw,dry]=res;
+  if(cfg&&cfg.error&&!cfg.loading){   // the program is not running (or this file was opened directly)
+    $('nosrv').style.display='block';$('status').textContent='Not connected to the dashboard program';
+    clearTimeout(window._retry);window._retry=setTimeout(refresh,5000);return}
+  $('nosrv').style.display='none';
   latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
-  const anyLoading=res.some(x=>x&&x.loading);   // scores need every source, so skip them until the slow ones are ready
+  const anyLoading=res.some(x=>x&&x.loading);$('loadnote').style.display=anyLoading?'block':'none';   // scores need every source, so skip them until the slow ones are ready
   const sc0=anyLoading?LOADING:await getSlow('/api/scores');if(!(sc0&&sc0.loading))applyScores(sc0);
   const anyErr=cfg.eia&&res.slice(1).some(x=>x&&x.error&&!x.loading);   // a source failed (network blip?): retry soon rather than in 5 minutes
   clearTimeout(window._retry);if(anyLoading||(sc0&&sc0.loading))window._retry=setTimeout(refresh,8000);else if(anyErr)window._retry=setTimeout(refresh,45000);

@@ -60,6 +60,11 @@ NG_DEMO=1 python3 server.py    # synthetic data, no network
 ```
 Server caches responses (weather 30 min, most EIA 1h, CFTC/rigs/STEO 6h, weather normals ~1 year) and persists them in `data/cache.json`, so restarts don't re-spend API quota; if a refresh fails it serves the last good data and the page flags it.
 
+## If the page opens but nothing works
+- The page shows a red **"not connected to the dashboard program"** message if the program (`server.py`) is not running or if `index.html` was opened as a file. Start it with the launcher and use http://localhost:8000. The page reconnects by itself.
+- The launchers set `OPEN_BROWSER=1`, so the program opens your browser itself once it is listening (no timing guesswork). Run `python3 server.py` yourself and it will not open a browser; add `OPEN_BROWSER=1` if you want that.
+- A blue note appears while the first start downloads weather history (1 to 2 minutes).
+
 ## Reliability
 - First start downloads ten years of weather history for the normals (about a minute); the server does this in the background and the page fills in by itself.
 - If a source fails, the last good data is served and the page says which panels are older; a failed source is not retried for 45 seconds (so a down source never stalls the page). A forced refresh (release checks) ignores that pause.

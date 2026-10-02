@@ -12,7 +12,7 @@ Optional manual feeds / config (data/ directory):
   data/rigs.csv            date,gas,oil       extra/backfilled Baker Hughes weekly counts
   data/score_config.json   {"weights": {"wx_vs_normal": 20, "cftc": 0}}   see scoring.py
 """
-import calendar, csv, html, io, json, math, os, random, re, statistics, sys, threading, time
+import calendar, csv, html, webbrowser, io, json, math, os, random, re, statistics, sys, threading, time
 import urllib.parse, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-01.5"
+VERSION = "2026-10-02.1"
 KEY_SOURCE = "none"
 
 
@@ -967,11 +967,14 @@ def set_eia_key(key):
 
 def warm_up():
     """Fetch everything once in the background so the first page load is quick (weather normals download ~10 years of history)."""
+    print("Loading data in the background. The first start takes about a minute (it downloads weather history). The page fills in by itself.", file=sys.stderr)
+    failed = []
     for fn in (api_weather, api_storage, api_power, api_fundamentals, api_cftc, api_rigs, api_dry, api_lng, api_steo, api_prodwx, api_tropics, api_ngwu):
         try:
             fn()
-        except Exception:
-            pass
+        except Exception as e:
+            failed.append(fn.__name__.replace("api_", ""))
+    print("Data ready." if not failed else "Data loaded, except: " + ", ".join(failed) + " (the page shows why; it retries automatically).", file=sys.stderr)
 
 
 def diag():
@@ -1044,4 +1047,7 @@ if __name__ == "__main__":
     if not EIA_KEY and not DEMO:
         print("\n*** No EIA key found yet. Open http://localhost:%d and paste the key into the box at the top of the page. ***\n" % port, file=sys.stderr)
     threading.Thread(target=warm_up, daemon=True).start()
+    if os.environ.get("OPEN_BROWSER") == "1":  # set by the launchers; opens only after the server is really listening
+        threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{port}")).start()
+    print(f"\nOpen this address in your browser:  http://localhost:{port}   (leave this window open)\n", file=sys.stderr)
     server.serve_forever()
