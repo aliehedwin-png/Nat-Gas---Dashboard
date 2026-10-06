@@ -1,0 +1,45 @@
+TECHNICAL TAB: LIVE DATA FROM YOUR INTERACTIVE BROKERS ACCOUNT
+
+The Technical tab works out of the box on SAMPLE BARS (a snapshot of NG captured on 2026-10-06). It says so at
+the top of the tab. To make it live you run a small helper, ibkr_feed.py, next to the dashboard. It reads bars from
+your own TWS or IB Gateway program. It is READ-ONLY: it cannot place, change or cancel orders.
+
+WHAT YOU NEED
+ - Trader Workstation (TWS) or IB Gateway installed and logged in on this computer.
+ - Market data for NYMEX futures on your IBKR account (CME/NYMEX bundle). Without it IBKR sends no bars.
+ - Python (already needed for the dashboard).
+
+ONE-TIME SETUP
+ 1. In TWS: File > Global Configuration > API > Settings   (IB Gateway: Configure > Settings > API > Settings)
+    - Tick "Enable ActiveX and Socket Clients"
+    - Tick "Read-Only API"
+    - Note the "Socket port" (TWS live 7496, TWS paper 7497, Gateway live 4001, Gateway paper 4002).
+      The helper tries all four by itself.
+    - "Trusted IPs" must contain 127.0.0.1 (it does by default).
+ 2. Install the helper's library once. Open a command window in this folder and run:
+        python -m pip install ib_async
+    (Windows: if "python" is not found, use  py -3 -m pip install ib_async)
+
+EVERY DAY
+ 1. Log in to TWS or IB Gateway.
+ 2. Double-click  Start IBKR Feed (Windows).bat   (Mac: Start IBKR Feed (Mac).command). Leave the window open.
+ 3. Keep the dashboard running as usual. The Technical tab switches from "sample bars" to "IBKR feed" within a minute.
+
+WHAT IT DOES
+ - Finds the active NG and CL contract (front month; rolls to the next month when it trades more volume for 2 sessions
+   in a row, or 7 days before the last trade date). The contract is shown on the tab.
+ - Downloads separate native bars for 15m, 1H, 4H and Daily, refreshing 15m/1H every 5 minutes and 4H/Daily every 30.
+ - On a roll it rebuilds every timeframe so levels are never mixed across contracts.
+ - Writes data/bars/NG_15m.json etc. If IBKR sends bad data it keeps the previous file.
+
+IF SOMETHING GOES WRONG
+ - "Could not connect": TWS/Gateway is not running, not logged in, or the API box in step 1 is not ticked.
+ - A popup in TWS asks to accept an incoming connection: click Accept.
+ - No bars / "no market data": your account lacks NYMEX data, or the market is closed and the exchange sent nothing.
+ - The tab warns "data is old": the helper window was closed. Start it again.
+ - IBKR allows one login per username at a time; logging in on your phone can disconnect TWS.
+
+NOT INCLUDED YET
+ Email or Telegram alerts, Claude-written commentary, the daily brief, the backtester and the trade journal.
+ Alerts appear on the Technical tab and as browser notifications while the page is open.
+ The rules are the v1 rules from your spec and have NOT been backtested. Treat setups as a checklist, not a signal.

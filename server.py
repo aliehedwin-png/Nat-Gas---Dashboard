@@ -19,12 +19,13 @@ from datetime import date, datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import scoring
+import ta_engine
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-06.3"
+VERSION = "2026-10-07.2"
 KEY_SOURCE = "none"
 
 
@@ -928,6 +929,44 @@ def api_ngwu():
     return cached("ngwu", 3 * 3600, go)
 
 
+# ---------- Technical analysis (CL / NG futures; read-only, bars from IBKR via ibkr_feed.py or sample_bars/) ----------
+BAR_DIRS = [os.path.join(DATA, "bars"), os.path.join(ROOT, "sample_bars")]
+
+
+def bars_signature():
+    sig = []
+    for d in BAR_DIRS:
+        try:
+            for n in sorted(os.listdir(d)):
+                if n.endswith(".json"):
+                    sig.append((d, n, os.path.getmtime(os.path.join(d, n))))
+        except OSError:
+            pass
+    return tuple(sig)
+
+
+_ta_cache = {"sig": None, "ts": 0, "val": None}
+
+
+def api_ta():
+    """Analysis for every market from the newest bar files. Recomputed when a file changes or after 20 s."""
+    sig = bars_signature()
+    c = _ta_cache
+    if c["val"] is not None and c["sig"] == sig and time.time() - c["ts"] < 20:
+        return c["val"]
+    cfg = ta_engine.config(DATA)
+    custom = load_json("events.json", [])
+    out = {"markets": {}, "now": int(time.time()), "version": 1}
+    for mk in cfg["markets"]:
+        try:
+            out["markets"][mk] = ta_engine.analyze_market(mk, BAR_DIRS, cfg, custom_events=custom)
+        except Exception as e:  # one bad file must not take the whole tab down
+            out["markets"][mk] = {"market": mk, "error": "Technical analysis failed: %s" % e}
+    out["config"] = {k: cfg[k] for k in ("min_r", "event_window_min", "zone_min_score_setup", "swing_n")}
+    c.update(sig=sig, ts=time.time(), val=out)
+    return out
+
+
 # ---------- Scores ----------
 def api_scores():
     d = {}
@@ -943,10 +982,10 @@ def api_scores():
 
 ROUTES = {"/api/storage": api_storage, "/api/fundamentals": api_fundamentals, "/api/power": api_power,
           "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather,
-          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/dry": api_dry, "/api/scores": api_scores}
+          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/dry": api_dry, "/api/ta": api_ta, "/api/scores": api_scores}
 CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals": ("fund_spot", "fund_production", "fund_lng_exports", "fund_mexico_exports"), "/api/power": ("power", "nuclear"),
               "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather",
-              "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu", "/api/dry": "dry"}
+              "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu", "/api/dry": "dry", "/api/ta": ()}
 
 
 def friendly(e):
