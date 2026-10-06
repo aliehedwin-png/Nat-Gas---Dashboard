@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-06.2"
+VERSION = "2026-10-06.3"
 KEY_SOURCE = "none"
 
 
@@ -1058,6 +1058,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def end_headers(self):
+        # Never let the browser reuse an old copy of the page or data: updates must show up immediately.
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        super().end_headers()
 
     def log_message(self, *a):
         pass

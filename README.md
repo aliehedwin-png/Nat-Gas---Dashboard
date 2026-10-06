@@ -63,6 +63,9 @@ Server caches responses (weather 30 min, most EIA 1h, CFTC/rigs/STEO 6h, weather
 ## Changing or fixing the EIA key
 The **EIA key** button at the top of the page is always available. The key box also opens by itself when EIA rejects the saved key. A key pasted into the page is saved in `data/eia_key.txt` and takes priority over the environment variable and any `.env` file (delete `data/eia_key.txt` to go back to them).
 
+## Old page showing after an update
+The program now sends `Cache-Control: no-store` for the page and every data request, so a browser can never keep showing an old copy after you update. (Versions before 2026-10-06.3 did not, and some browsers reused a saved copy of the page for hours; if you still see an old page once, press Ctrl+F5.)
+
 ## Why the page is quick to show the key box
 The page asks the program for its status first (instant) and draws the key box and "Connected" status before requesting any data. Data requests are limited to one open request per source, so a slow source (the first-time weather history download) can never crowd out the rest. The weather forecast no longer waits for the 10-year normals: they download in the background and appear by themselves.
 
