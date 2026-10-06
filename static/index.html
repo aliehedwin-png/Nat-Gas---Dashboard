@@ -37,7 +37,7 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
 #toast{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:9}#toast div{background:var(--card);border:1px solid var(--a);border-radius:8px;padding:10px 14px;max-width:380px;box-shadow:0 4px 16px #0004}
 .note{font-size:11px;color:var(--mute);padding:0 16px 20px}
 </style></head><body>
-<header><h1>Natural Gas — Fundamentals Dashboard</h1><div id="status">loading… first start can take a minute</div></header>
+<header><h1>Natural Gas — Fundamentals Dashboard</h1><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="al" id="keyLink" title="Set or change your EIA key" style="display:none">EIA key</button><div id="status">loading… first start can take a minute</div></div></header>
 <div id="nosrv" style="display:none;background:var(--card);border-bottom:2px solid var(--dn);padding:14px 16px;line-height:1.5">
  <b class="dn">This page is not connected to the dashboard program.</b><br>
  Start the program first: <b>Windows</b>: double-click <i>Start Dashboard (Windows).bat</i>. <b>Mac</b>: open <i>Start Dashboard (Mac).command</i>. Leave its window open, then go to <b>http://localhost:8000</b> in your browser.
@@ -45,7 +45,7 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
 <div id="loadnote" style="display:none;background:var(--card);border-bottom:2px solid var(--a);padding:10px 16px;font-size:13px"><b>Getting your data for the first time.</b> This can take 1 to 2 minutes. Panels fill in on their own; you do not need to do anything.</div>
 <div class="banner" id="banner"></div>
 <div id="keybox" style="display:none;background:var(--card);color:var(--text);border-bottom:2px solid var(--b);padding:12px 16px">
- <b>EIA key needed.</b> Paste it here (it is checked with EIA, then saved on this computer only):
+ <b id="keyHead">EIA key needed.</b> <span id="keyHelp">Paste it here (it is checked with EIA, then saved on this computer only):</span>
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><input id="keyIn" type="text" autocomplete="off" spellcheck="false" placeholder="Paste your EIA API key" style="flex:1;min-width:240px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--text)"><button class="al" id="keyBtn">Save key</button></div>
  <div id="keyMsg" style="margin-top:6px;font-size:12px"></div><div id="keyDiag" style="margin-top:6px;font-size:11px;color:var(--mute)"></div></div>
 <div class="tiles" id="tiles"></div>
@@ -111,6 +111,13 @@ const sgn=(n,d=2)=>n==null?'–':(n>=0?'+':'')+fmt(n,d);
 const bull=n=>n==null||n===0?'':n>0?'up':'dn';
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const T=s=>+new Date(s);
+let keyForced=false;
+function paintKeyBox(){const k=window._keyState;if(!k)return;
+  $('keyLink').style.display=k.demo?'none':'inline-block';
+  const show=!k.demo&&(!k.has||k.bad||keyForced);$('keybox').style.display=show?'block':'none';
+  $('keyHead').textContent=!k.has?'EIA key needed.':k.bad?'EIA did not accept the saved key.':'EIA key.';
+  $('keyHelp').textContent=!k.has?'Paste it here (it is checked with EIA, then saved on this computer only):':k.bad?'Paste your key again (copy it from the EIA email, no spaces):':`A key is already saved (${k.src||'unknown source'}). Paste a new one to replace it:`}
+
 const STALE_NAMES={storage:'storage',storage_regions:'storage',fund_spot:'Henry Hub spot',fund_production:'dry production (monthly)',fund_lng_exports:'LNG exports',fund_mexico_exports:'Mexico exports',power:'power burn',nuclear:'nuclear outages',cftc:'CFTC positioning',rigs:'rig counts',lng:'LNG',dry:'dry production',steo:'EIA outlook',weather:'weather',prodwx:'freeze watch',tropics:'tropical watch',ngwu:'EIA weekly update'};
 const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 let W=640,vline=null;const H=220,M={l:52,r:10,t:8,b:20};
@@ -168,7 +175,7 @@ function applyScores(sc){
 }
 
 // ---------- refresh ----------
-async function refresh(){
+async function refreshInner(){
   const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo','ngwu','dry'];
   const res=await Promise.all(names.map(x=>getSlow('/api/'+x)));
   const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw,dry]=res;
@@ -176,14 +183,16 @@ async function refresh(){
     $('nosrv').style.display='block';$('status').textContent='Not connected to the dashboard program';
     clearTimeout(window._retry);window._retry=setTimeout(refresh,5000);return}
   $('nosrv').style.display='none';
+  const allErr=[cfg,...res.slice(1)].flatMap(x=>x&&typeof x==='object'?[x.error,...Object.values(x).map(v=>v&&v.error)]:[]).filter(Boolean).join(' | ');
+  window._keyState={demo:!!cfg.demo,has:!!cfg.eia,bad:/EIA rejected your API key/.test(allErr),src:(cfg.diag||{}).key_source};paintKeyBox();
   latest={storage:st,cftc:cf,rigs:rg,power:pw,weather:wx,tropics:tr,fundamentals:fu,steo:steo,ngwu:nw};
   const anyLoading=res.some(x=>x&&x.loading);$('loadnote').style.display=anyLoading?'block':'none';   // scores need every source, so skip them until the slow ones are ready
   const sc0=anyLoading?LOADING:await getSlow('/api/scores');if(!(sc0&&sc0.loading))applyScores(sc0);
   const anyErr=cfg.eia&&res.slice(1).some(x=>x&&x.error&&!x.loading);   // a source failed (network blip?): retry soon rather than in 5 minutes
   clearTimeout(window._retry);if(anyLoading||(sc0&&sc0.loading))window._retry=setTimeout(refresh,8000);else if(anyErr)window._retry=setTimeout(refresh,45000);
-  [...new Set(RELEASES.map(r=>r.api))].forEach(a=>checkNew(a,latest[a],false));
+  [...new Set(RELEASES.map(r=>r.api))].forEach(a=>{try{checkNew(a,latest[a],false)}catch(e){console.warn('release check failed for',a,e)}});
   $('banner').style.display=cfg.demo?'block':'none';
-  $('keybox').style.display=(cfg.demo||cfg.eia)?'none':'block';
+
   if(cfg.diag&&!cfg.eia)$('keyDiag').textContent=`Looked for the key in: ${cfg.diag.folder}. Files found there starting with .env: ${cfg.diag.env_files.join(', ')||'none'}. Server version ${cfg.version}.`;
   $('banner').textContent=cfg.demo?'DEMO MODE — synthetic data, not real values.':'EIA key not found — storage, spot, production, exports, power, STEO and LNG panels are unavailable. Put EIA_API_KEY=your_key in the .env file next to server.py and restart (free key: eia.gov/opendata).';
   const stale=Object.entries(cfg.stale||{});window._ver=cfg.version||'';
@@ -329,7 +338,7 @@ const RELEASES=[
   msg:d=>d.storms.length?d.storms.slice(0,3).map(s=>`${s.name} ${s.classification} ${s.mph} mph, ${fmt(s.dist_km,0)} km from Gulf`).join('; '):'No active systems'},
  {id:'steo',name:'EIA Short-Term Energy Outlook (monthly)',api:'steo',approx:true,next:nextSteo,sig:d=>JSON.stringify(d.series.prod.slice(-18)),scores:[],
   msg:d=>`STEO marketed production ${fmt(d.series.prod.slice(-1)[0][1],1)} Bcf/d (${d.series.prod.slice(-1)[0][0]})`},
- {id:'ngm',name:'EIA monthly production/exports (month-end)',api:'fundamentals',approx:true,next:nextMonthEnd,sig:d=>JSON.stringify([d.production&&d.production.slice(-1)[0],d.lng_exports&&d.lng_exports.slice(-1)[0]]),scores:['production','mexico','lng'],
+ {id:'ngm',name:'EIA monthly production/exports (month-end)',api:'fundamentals',approx:true,next:nextMonthEnd,sig:d=>JSON.stringify([Array.isArray(d.production)?d.production.slice(-1)[0]:null,Array.isArray(d.lng_exports)?d.lng_exports.slice(-1)[0]:null]),scores:['production','mexico','lng'],
   msg:d=>`Production ${fmt(d.production.slice(-1)[0][1],0)} MMcf (${d.production.slice(-1)[0][0]}); LNG exports ${fmt(d.lng_exports.slice(-1)[0][1],0)} MMcf`},
 ];
 let latest={};
@@ -359,11 +368,14 @@ async function announce(api,d,refreshAfter){
   const parts=ids.map(id=>SC[id]).filter(Boolean).map(s=>`${s.metric}: ${s.label} (${sg(s.score)})`);
   const comp=COMP&&COMP.value!=null?`Composite ${sg(COMP.value)} ${COMP.label}${before!=null&&before!==COMP.value?` (was ${sg(before)})`:''}`:'';
   const title=rs.length>1?'New data: '+rs.map(r=>r.name.replace(/ \(.*\)/,'')).join(' / '):'New data: '+rs[0].name;
-  notify(title,[rs.map(r=>r.msg(d)).join('\n'),...parts,comp].filter(Boolean).join('\n'));
+  let body='';try{body=rs.map(r=>r.msg(d)).join('\n')}catch(e){body='New data is available.'}
+  notify(title,[body,...parts,comp].filter(Boolean).join('\n'));
   if(refreshAfter)refresh()}
+function safeSig(r,d){try{return r.sig(d)}catch(e){return null}}   // partial data (e.g. one series rejected) must never break the page
 function checkNew(api,d,refreshAfter){
   if(!d||d.error)return false;
-  const s=releasesFor(api)[0].sig(d);
+  const s=safeSig(releasesFor(api)[0],d);
+  if(s===null)return false;
   if(seen[api]===undefined){seen[api]=s;return false}   // first load: remember, do not announce
   if(s===seen[api])return false;
   seen[api]=s;announce(api,d,refreshAfter);return true}
@@ -390,9 +402,13 @@ function scheduler(){
       :got?`<span class="up">✓ updated ${new Date(lastNew[r.id]).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}</span>`:left<3600e3?'<span class="soon">due within the hour</span>':'';
     return `<tr><td>${r.name}</td><td>${r.approx?'~ ':''}${new Date(st.target).toLocaleString([],{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td class="${left<3600e3?'soon':''}">${dur(left)}</td><td>${status}</td></tr>`}).join('');
 }
+async function refresh(){
+  try{await refreshInner()}
+  catch(e){console.error(e);$('status').textContent='Display problem: '+(e&&e.message||e)+'. Retrying in 30 seconds; if it keeps happening, send me this message.';clearTimeout(window._retry);window._retry=setTimeout(refresh,30000)}}
+$('keyLink').onclick=()=>{keyForced=!keyForced;paintKeyBox();if(keyForced)$('keyIn').focus()};
 $('keyBtn').onclick=async()=>{const m=$('keyMsg');m.textContent='Checking the key with EIA…';m.className='';
   try{const r=await fetch('/api/setkey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('keyIn').value})});const j=await r.json();
-    if(j.ok){m.textContent='Key saved. Loading data…';m.className='up';$('keyIn').value='';await refresh()}else{m.textContent=j.error||'Could not save the key.';m.className='dn'}}
+    if(j.ok){m.textContent='Key saved. Loading data…';m.className='up';$('keyIn').value='';keyForced=false;await refresh()}else{m.textContent=j.error||'Could not save the key.';m.className='dn'}}
   catch(e){m.textContent='Could not reach the dashboard server: '+e;m.className='dn'}};
 paintAlertBtn();scheduler();setInterval(scheduler,1000);
 refresh();setInterval(refresh,300000);

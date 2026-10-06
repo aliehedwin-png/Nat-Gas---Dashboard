@@ -60,6 +60,9 @@ NG_DEMO=1 python3 server.py    # synthetic data, no network
 ```
 Server caches responses (weather 30 min, most EIA 1h, CFTC/rigs/STEO 6h, weather normals ~1 year) and persists them in `data/cache.json`, so restarts don't re-spend API quota; if a refresh fails it serves the last good data and the page flags it.
 
+## Changing or fixing the EIA key
+The **EIA key** button at the top of the page is always available. The key box also opens by itself when EIA rejects the saved key. A key pasted into the page is saved in `data/eia_key.txt` and takes priority over the environment variable and any `.env` file (delete `data/eia_key.txt` to go back to them).
+
 ## If the page opens but nothing works
 - The page shows a red **"not connected to the dashboard program"** message if the program (`server.py`) is not running or if `index.html` was opened as a file. Start it with the launcher and use http://localhost:8000. The page reconnects by itself.
 - The launchers set `OPEN_BROWSER=1`, so the program opens your browser itself once it is listening (no timing guesswork). Run `python3 server.py` yourself and it will not open a browser; add `OPEN_BROWSER=1` if you want that.

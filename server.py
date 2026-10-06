@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-02.1"
+VERSION = "2026-10-06.1"
 KEY_SOURCE = "none"
 
 
@@ -45,21 +45,23 @@ def load_dotenv(path):
     return None
 
 
-if os.environ.get("EIA_API_KEY"):
-    KEY_SOURCE = "environment variable"
-for _name in (".env", ".env.txt"):  # .env.txt: Notepad often appends .txt
-    if not os.environ.get("EIA_API_KEY") and load_dotenv(os.path.join(ROOT, _name)):
-        KEY_SOURCE = _name
 KEY_FILE = os.path.join(DATA, "eia_key.txt")  # written by the in-page "Save key" box
-if not os.environ.get("EIA_API_KEY"):
-    try:
-        with open(KEY_FILE, encoding="utf-8-sig") as _f:
-            _k = _f.read().strip()
-        if _k:
-            os.environ["EIA_API_KEY"] = _k
-            KEY_SOURCE = "saved from the dashboard"
-    except OSError:
-        pass
+# Key priority: a key pasted into the dashboard (most recent, explicit) > environment variable > .env / .env.txt
+_saved = ""
+try:
+    with open(KEY_FILE, encoding="utf-8-sig") as _f:
+        _saved = _f.read().strip()
+except OSError:
+    pass
+if _saved:
+    os.environ["EIA_API_KEY"] = _saved
+    KEY_SOURCE = "saved from the dashboard"
+elif os.environ.get("EIA_API_KEY"):
+    KEY_SOURCE = "environment variable"
+else:
+    for _name in (".env", ".env.txt"):  # .env.txt: Notepad often appends .txt
+        if not os.environ.get("EIA_API_KEY") and load_dotenv(os.path.join(ROOT, _name)):
+            KEY_SOURCE = _name
 EIA_KEY = os.environ.get("EIA_API_KEY", "")
 DEMO = os.environ.get("NG_DEMO") == "1"
 UA = {"User-Agent": "Mozilla/5.0 (ng-dashboard)"}
@@ -163,7 +165,12 @@ def eia_fetch(path, facets, freq, length, cols=("value",), start=None):
         q.append(("start", start))
     for k, vals in facets.items():
         q += [(f"facets[{k}][]", v) for v in vals]
-    return http_json(f"https://api.eia.gov/v2/{path}/data/?" + urllib.parse.urlencode(q), 30)["response"]["data"]
+    try:
+        return http_json(f"https://api.eia.gov/v2/{path}/data/?" + urllib.parse.urlencode(q), 30)["response"]["data"]
+    except OSError as e:
+        if getattr(e, "code", 0) in (401, 403):
+            raise RuntimeError("EIA rejected your API key. Click \"EIA key\" at the top of the page and paste it again.")
+        raise
 
 
 def eia_raw(path, facets, freq, length):
