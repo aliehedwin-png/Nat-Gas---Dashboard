@@ -63,6 +63,9 @@ Server caches responses (weather 30 min, most EIA 1h, CFTC/rigs/STEO 6h, weather
 ## Changing or fixing the EIA key
 The **EIA key** button at the top of the page is always available. The key box also opens by itself when EIA rejects the saved key. A key pasted into the page is saved in `data/eia_key.txt` and takes priority over the environment variable and any `.env` file (delete `data/eia_key.txt` to go back to them).
 
+## Why the page is quick to show the key box
+The page asks the program for its status first (instant) and draws the key box and "Connected" status before requesting any data. Data requests are limited to one open request per source, so a slow source (the first-time weather history download) can never crowd out the rest. The weather forecast no longer waits for the 10-year normals: they download in the background and appear by themselves.
+
 ## If the page opens but nothing works
 - The page shows a red **"not connected to the dashboard program"** message if the program (`server.py`) is not running or if `index.html` was opened as a file. Start it with the launcher and use http://localhost:8000. The page reconnects by itself.
 - The launchers set `OPEN_BROWSER=1`, so the program opens your browser itself once it is listening (no timing guesswork). Run `python3 server.py` yourself and it will not open a browser; add `OPEN_BROWSER=1` if you want that.

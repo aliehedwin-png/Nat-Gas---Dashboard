@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-06.1"
+VERSION = "2026-10-06.2"
 KEY_SOURCE = "none"
 
 
@@ -679,6 +679,8 @@ def locs_query():
 def api_normals():
     """Population-weighted HDD/CDD normal by MM-DD from 10 years of Open-Meteo archive data (cached ~1 year)."""
     def go():
+        if os.environ.get("NG_TEST_SLOW_NORMALS"):  # test hook: simulate a slow download
+            time.sleep(float(os.environ["NG_TEST_SLOW_NORMALS"]))
         if DEMO:
             out = {}
             for i in range(366):
@@ -706,6 +708,26 @@ def api_normals():
             out[k] = [round(statistics.mean(x[0] for x in win), 2), round(statistics.mean(x[1] for x in win), 2)]
         return out
     return cached("normals", 365 * 86400, go)
+
+
+_normals_thread = None
+
+
+def normals_nowait():
+    """Return the cached normals at once, or None while a background download runs (never makes the caller wait)."""
+    global _normals_thread
+    hit = _cache.get("normals")
+    if hit and time.time() - hit[0] < 365 * 86400:
+        return hit[1]
+    if _normals_thread is None or not _normals_thread.is_alive():
+        def run():
+            try:
+                api_normals()
+            except Exception:
+                pass
+        _normals_thread = threading.Thread(target=run, daemon=True)
+        _normals_thread.start()
+    return None
 
 
 def wx_snapshot_history(now_totals):
@@ -747,10 +769,7 @@ def api_weather():
                     s_ = days.setdefault(day, {}).setdefault(m, [0, 0])
                     s_[0] += w * max(0, 65 - t)
                     s_[1] += w * max(0, t - 65)
-        try:
-            normals = api_normals()
-        except Exception:
-            normals = None
+        normals = normals_nowait()
         rows = []
         for k, v in sorted(days.items()):
             row = {"date": k, "forecast": k > today,
@@ -776,10 +795,13 @@ def api_weather():
         def rev(hours):
             old = [h for h in hist if h["ts"] <= now - hours * 3600]
             return {k: round(tot[k] - old[-1][k], 1) for k in MODEL_KEYS} if old else None
-        return {"days": rows, "totals": tot, "normal15": norm15, "dev": dev, "rev_6h": rev(6), "rev_24h": rev(24),
+        return {"days": rows, "totals": tot, "normal15": norm15, "dev": dev, "normals_pending": normals is None, "rev_6h": rev(6), "rev_24h": rev(24),
                 "history": [{"ts": h["ts"] * 1000, **{k: h[k] for k in MODEL_KEYS if k in h}} for h in hist[-240:]],
                 "models": {"gfs": "GFS", "ecmwf": "ECMWF IFS"}}
-    return cached("weather", 1800, go)
+    val = cached("weather", 1800, go)
+    if val.get("normals_pending") and "weather" in _cache and _cache["weather"][1] is val:
+        _cache["weather"] = (time.time() - 1800 + 20, val)  # re-check in ~20 s so the normals appear as soon as they are ready
+    return val
 
 
 # ---------- Producing-region freeze-off watch ----------
@@ -976,6 +998,7 @@ def warm_up():
     """Fetch everything once in the background so the first page load is quick (weather normals download ~10 years of history)."""
     print("Loading data in the background. The first start takes about a minute (it downloads weather history). The page fills in by itself.", file=sys.stderr)
     failed = []
+    normals_nowait()
     for fn in (api_weather, api_storage, api_power, api_fundamentals, api_cftc, api_rigs, api_dry, api_lng, api_steo, api_prodwx, api_tropics, api_ngwu):
         try:
             fn()

@@ -146,7 +146,9 @@ function draw(el,{series=[],band=null,cat=null,yFmt=v=>Math.abs(v)>=1e6?(v/1e6).
 }
 const get=u=>fetch(u).then(r=>r.json()).catch(e=>({error:String(e)}));
 const LOADING={error:'Still loading… the first run downloads weather history and can take a minute. This fills in automatically.',loading:true};
-const getSlow=(u,ms=12000)=>Promise.race([get(u),new Promise(r=>setTimeout(()=>r(LOADING),ms))]);
+const inflight={};   // at most one open request per endpoint, so a slow source can never crowd out the browser's connections
+const getSlow=(u,ms=12000)=>{if(!inflight[u])inflight[u]=get(u).finally(()=>{delete inflight[u]});
+  return Promise.race([inflight[u],new Promise(r=>setTimeout(()=>r(LOADING),ms))])};
 const errBox=(el,m)=>{const svg=$(el);svg.innerHTML='';let e=svg.parentNode.querySelector(`.err[data-for="${el}"]`);if(!e){e=document.createElement('div');e.className='err';e.dataset.for=el;svg.after(e)}e.textContent=m;e.hidden=false;svg.style.display='none'};
 const okBox=el=>{const e=$(el).parentNode.querySelector(`.err[data-for="${el}"]`);if(e)e.hidden=true;$(el).style.display=''};
 const ok=x=>x&&!x.error;
@@ -177,7 +179,12 @@ function applyScores(sc){
 // ---------- refresh ----------
 async function refreshInner(){
   const names=['config','storage','fundamentals','weather','power','cftc','rigs','lng','prodwx','tropics','steo','ngwu','dry'];
-  const res=await Promise.all(names.map(x=>getSlow('/api/'+x)));
+  const cfg0=await get('/api/config');   // instant: draws the key box and status before any slow data is requested
+  if(cfg0&&cfg0.error&&!cfg0.loading){$('nosrv').style.display='block';$('status').textContent='Not connected to the dashboard program';
+    clearTimeout(window._retry);window._retry=setTimeout(refresh,5000);return}
+  $('nosrv').style.display='none';$('status').textContent='Connected. Loading data… (v'+(cfg0.version||'?')+')';
+  window._keyState={demo:!!cfg0.demo,has:!!cfg0.eia,bad:false,src:(cfg0.diag||{}).key_source};paintKeyBox();
+  const res=[cfg0,...await Promise.all(names.slice(1).map(x=>getSlow('/api/'+x)))];
   const [cfg,st,fu,wx,pw,cf,rg,lng,pwx,tr,steo,nw,dry]=res;
   if(cfg&&cfg.error&&!cfg.loading){   // the program is not running (or this file was opened directly)
     $('nosrv').style.display='block';$('status').textContent='Not connected to the dashboard program';
@@ -189,7 +196,8 @@ async function refreshInner(){
   const anyLoading=res.some(x=>x&&x.loading);$('loadnote').style.display=anyLoading?'block':'none';   // scores need every source, so skip them until the slow ones are ready
   const sc0=anyLoading?LOADING:await getSlow('/api/scores');if(!(sc0&&sc0.loading))applyScores(sc0);
   const anyErr=cfg.eia&&res.slice(1).some(x=>x&&x.error&&!x.loading);   // a source failed (network blip?): retry soon rather than in 5 minutes
-  clearTimeout(window._retry);if(anyLoading||(sc0&&sc0.loading))window._retry=setTimeout(refresh,8000);else if(anyErr)window._retry=setTimeout(refresh,45000);
+  const wxPend=ok(wx)&&wx.normals_pending;   // weather history still downloading: look again soon
+  clearTimeout(window._retry);if(anyLoading||(sc0&&sc0.loading))window._retry=setTimeout(refresh,8000);else if(wxPend)window._retry=setTimeout(refresh,25000);else if(anyErr)window._retry=setTimeout(refresh,45000);
   [...new Set(RELEASES.map(r=>r.api))].forEach(a=>{try{checkNew(a,latest[a],false)}catch(e){console.warn('release check failed for',a,e)}});
   $('banner').style.display=cfg.demo?'block':'none';
 
@@ -224,7 +232,7 @@ async function refreshInner(){
     draw('wx',{series:[...(hasN?[{data:d.map(r=>[T(r.date),r.normal.hdd+r.normal.cdd]),color:'--mute',dash:'4 3',w:1.2}]:[]),
       {data:d.filter(r=>r.gfs).map(r=>[T(r.date),dd(r,'gfs')]),color:'--a'},{data:d.filter(r=>r.ecmwf).map(r=>[T(r.date),dd(r,'ecmwf')]),color:'--b'}]});
     vline=null;const g=wx.totals,n=wx.normal15;
-    $('wxsub').textContent=`Next 15d HDD+CDD — GFS ${fmt(g.gfs_hdd+g.gfs_cdd,0)} · ECMWF ${fmt(g.ecmwf_hdd+g.ecmwf_cdd,0)}`+(n?` · normal ${fmt(n.hdd+n.cdd,0)} (avg ${sgn(wx.dev.avg,0)} DD vs normal)`:' · normals unavailable');
+    $('wxsub').textContent=`Next 15d HDD+CDD — GFS ${fmt(g.gfs_hdd+g.gfs_cdd,0)} · ECMWF ${fmt(g.ecmwf_hdd+g.ecmwf_cdd,0)}`+(n?` · normal ${fmt(n.hdd+n.cdd,0)} (avg ${sgn(wx.dev.avg,0)} DD vs normal)`:(wx.normals_pending?' · 10-year normals are still downloading, they will appear automatically':' · normals unavailable'));
     const h=wx.history;
     draw('rv',{series:[{data:h.map(x=>[x.ts,x.gfs_hdd]),color:'--a'},{data:h.map(x=>[x.ts,x.ecmwf_hdd]),color:'--b'}]});
     $('rvsub').textContent=`${h.length} snapshot(s), taken hourly while the server runs`;
