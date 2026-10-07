@@ -22,10 +22,11 @@ class IB:
         return [Bar(base + timedelta(minutes=15 * i), 3.0, 3.1, 2.9, 3.05, 100) for i in range(80)]
     def sleep(s, x): pass
     def disconnect(s): pass
+    def isConnected(s): return True
 sys.modules["ib_async"] = types.SimpleNamespace(IB=IB, Future=Future)
 with tempfile.TemporaryDirectory() as d:
     f.OUT = d
-    f.run(types.SimpleNamespace(host="x", port=7497, client_id=1, once=True))
+    f.run(types.SimpleNamespace(host="x", port=7497, client_id=1, once=True, parent=0))
     names = sorted(os.listdir(d)); print(names)
     assert len(names) == 8, names
     j = json.load(open(os.path.join(d, "NG_4H.json"))); assert j["contract"] == "NGX6" and len(j["time"]) == 80 and j["source"] == "ibkr-feed"

@@ -523,21 +523,22 @@ function taDraw(a,m){
 
 function taBadge(txt){const t=String(txt).toLowerCase();const c=t.includes('bull')||t==='up'?'bull':t.includes('bear')||t==='down'?'bear':'neu';return `<span class="bd ${c}">${esc(txt)}</span>`}
 
+function feedLine(){const f=TA.feed;if(!f)return '';const cls=f.state==='connected'?'':f.state==='off'?'':'dn';const dot={connected:'●',waiting:'◌',starting:'◌',off:'○',error:'✕',stale:'●'}[f.state]||'○';return `<div class="warn ${cls}"><b>IBKR ${dot} ${esc(f.state)}</b> · ${esc(f.message)}</div>`}
 function paintTA(){
   if(!TA)return;
   const warn=$('taWarn');
   if(TA.error){warn.innerHTML=`<div class="warn dn">${esc(TA.error)}</div>`;return}
   const m=TA.markets[taMkt];
   if(!m||m.error){warn.innerHTML=`<div class="warn dn">${esc((m&&m.error)||'No data for '+taMkt)}</div>`;return}
-  if(m.no_bars){warn.innerHTML=`<div class="warn dn">No bars for ${esc(taMkt)} yet. Start the IBKR feed (see TA_SETUP.txt) or put ${esc(taMkt)}_1D.json etc. in data/bars/.</div>`;$('taMeta').textContent='';$('taTitle').textContent=taMkt;$('taSub').textContent='';$('taChart').innerHTML='';errBox('taChart','No bars for '+taMkt);$('taLegend').innerHTML='';['taBias','taBiasTab','taZones','taSetups','taAlerts','taEvents'].forEach(i=>{if($(i))$(i).innerHTML=''});['taSetBadge','taSetSub','taEvSub'].forEach(i=>{if($(i))$(i).textContent=''});return}
+  if(m.no_bars){warn.innerHTML=feedLine()+`<div class="warn dn">No bars for ${esc(taMkt)} yet. Start the IBKR feed (see TA_SETUP.txt) or put ${esc(taMkt)}_1D.json etc. in data/bars/.</div>`;$('taMeta').textContent='';$('taTitle').textContent=taMkt;$('taSub').textContent='';$('taChart').innerHTML='';errBox('taChart','No bars for '+taMkt);$('taLegend').innerHTML='';['taBias','taBiasTab','taZones','taSetups','taAlerts','taEvents'].forEach(i=>{if($(i))$(i).innerHTML=''});['taSetBadge','taSetSub','taEvSub'].forEach(i=>{if($(i))$(i).textContent=''});return}
   const dec=m.decimals,P=v=>v==null?'–':Number(v).toFixed(dec),a=m.tfs[taTf],now=TA.now,w=[];
   const live=(m.source||[]).some(s=>!/sample/.test(s)),fetched=m.fetched;
   $('taMeta').textContent=`${m.contract||''} ${m.name?'· '+m.name:''} · ${m.market_open?'market open':'market closed'} · data fetched ${lt(fetched)} (${ago(now-fetched)} ago, ${live?'IBKR feed':'sample bars'})`;
-  if(!live)w.push(`These are <b>sample bars</b> captured ${lt(fetched)}. Start the IBKR feed for live data (see TA_SETUP.txt); until then levels and setups describe that moment, not now.`);
+  if(!live)w.push(`These are <b>sample bars</b> captured ${lt(fetched)}. The dashboard starts the IBKR feed itself; once the IBKR line above says connected these are replaced by live bars (setup: TA_SETUP.txt). Until then levels and setups describe that moment, not now.`);
   else if(m.market_open&&now-fetched>25*60)w.push(`The last data is <b>${ago(now-fetched)} old</b> while the market is open: the IBKR feed has probably stopped. Levels and setups below are out of date.`);
   if(m.contract_mismatch)w.push(`Bars come from more than one contract (${esc(m.contract)}): a roll happened. Levels measured on different contracts are not comparable; let the feed rebuild all timeframes.`);
   if(m.event_window)w.push('Inside a scheduled-event window: new setups are not alerted.');else if(m.event_day)w.push('Event day: '+(m.events[0]||{}).name+' is today (historically your weakest day).');
-  warn.innerHTML=w.map(x=>`<div class="warn">${x}</div>`).join('');
+  warn.innerHTML=feedLine()+w.map(x=>`<div class="warn">${x}</div>`).join('');
   $('taTitle').textContent=`${m.market} ${TF_LABEL[taTf]}`;
   if(!a||a.error){$('taSub').textContent='';const sv=$('taChart');sv.innerHTML='';errBox('taChart',(a&&a.error)||'No data for this timeframe');$('taLegend').innerHTML=''}
   else{

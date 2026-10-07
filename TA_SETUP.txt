@@ -1,7 +1,7 @@
 TECHNICAL TAB: LIVE DATA FROM YOUR INTERACTIVE BROKERS ACCOUNT
 
-The Technical tab works out of the box on SAMPLE BARS (a snapshot of NG captured on 2026-10-06). It says so at
-the top of the tab. To make it live you run a small helper, ibkr_feed.py, next to the dashboard. It reads bars from
+The Technical tab shows SAMPLE BARS (a snapshot of NG captured on 2026-10-06) until the IBKR feed connects; it says so at
+the top of the tab. The feed, ibkr_feed.py, is started by the dashboard itself. It reads bars from
 your own TWS or IB Gateway program. It is READ-ONLY: it cannot place, change or cancel orders.
 
 WHAT YOU NEED
@@ -21,9 +21,14 @@ ONE-TIME SETUP
     (Windows: if "python" is not found, use  py -3 -m pip install ib_async)
 
 EVERY DAY
- 1. Log in to TWS or IB Gateway.
- 2. Double-click  Start IBKR Feed (Windows).bat   (Mac: Start IBKR Feed (Mac).command). Leave the window open.
- 3. Keep the dashboard running as usual. The Technical tab switches from "sample bars" to "IBKR feed" within a minute.
+ 1. Log in to TWS or IB Gateway and leave it open.
+ 2. Start the dashboard as usual (Start Dashboard file). It starts the IBKR feed by itself and closes it when you close the
+    dashboard. The Technical tab shows a line "IBKR connected / waiting / error" and switches from "sample bars" to live bars
+    within a minute. If TWS is not running yet, the feed keeps retrying every 10 seconds, so the order does not matter.
+ (The Start Dashboard file installs the ib_async library for you the first time.)
+ To turn the feed off: set IBKR_FEED=0 before starting. To use one fixed port: set IBKR_PORT=7497 (or 7496, 4001, 4002).
+ TWS cannot be logged in for you: IBKR requires you to enter your password (and 2-factor) in TWS yourself. Turn on
+ "Auto restart" in TWS (Configure > Settings > Lock and Exit) so it stays logged in for the week.
 
 WHAT IT DOES
  - Finds the active NG and CL contract (front month; rolls to the next month when it trades more volume for 2 sessions
@@ -36,7 +41,7 @@ IF SOMETHING GOES WRONG
  - "Could not connect": TWS/Gateway is not running, not logged in, or the API box in step 1 is not ticked.
  - A popup in TWS asks to accept an incoming connection: click Accept.
  - No bars / "no market data": your account lacks NYMEX data, or the market is closed and the exchange sent nothing.
- - The tab warns "data is old": the helper window was closed. Start it again.
+ - The tab warns "data is old" or the IBKR line says stopped: check data/ibkr_feed.log, then restart the dashboard.
  - IBKR allows one login per username at a time; logging in on your phone can disconnect TWS.
 
 NOT INCLUDED YET

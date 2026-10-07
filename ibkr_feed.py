@@ -81,18 +81,35 @@ def write_atomic(path, payload):
     os.replace(tmp, path)
 
 
+STATUS = os.path.join(HERE, "data", "ibkr_status.json")
+
+
+def status(state, message, **extra):
+    """Tell the dashboard what the feed is doing: state is starting, waiting, connected or error."""
+    try:
+        write_atomic(STATUS, dict({"state": state, "message": message, "ts": int(time.time()), "pid": os.getpid()}, **extra))
+    except OSError:
+        pass
+
+
 def connect(IB, host, port, client_id):
+    """Try each API port once; return a connected IB or None (the caller retries, so TWS may be started later)."""
     ports = [port] if port else PORTS
     last = None
     for p in ports:
         ib = IB()
         try:
-            ib.connect(host, p, clientId=client_id, readonly=True, timeout=8)
+            ib.connect(host, p, clientId=client_id, readonly=True, timeout=6)
             print(f"Connected to {host}:{p} (read-only)")
+            status("connected", f"Connected to TWS / IB Gateway on port {p} (read-only)", port=p)
             return ib
         except Exception as e:  # noqa: BLE001 - report and try the next port
             last = e
-    raise SystemExit(f"Could not connect to TWS or IB Gateway on ports {ports}: {last}\nSee TA_SETUP.txt (Edit > Global Configuration > API > Settings).")
+    msg = ("Waiting for TWS or IB Gateway: start it, log in and enable the API (TA_SETUP.txt). "
+           f"Tried ports {', '.join(map(str, ports))}.")
+    print(msg, f"({last})" if last else "")
+    status("waiting", msg)
+    return None
 
 
 def fetch_bars(ib, contract, size, duration):
@@ -121,16 +138,47 @@ def choose(ib, Future, market):
     return next(c for c, _ in cons if c.localSymbol == sym)
 
 
+def check_parent(args):
+    """Exit when the dashboard that started this feed has gone away."""
+    if args.parent:
+        try:
+            os.kill(args.parent, 0)
+        except OSError:
+            raise SystemExit(0)
+
+
 def run(args):
+    status("starting", "Starting the IBKR feed")
     try:
         from ib_async import IB, Future
     except ImportError:
+        status("error", "The ib_async package is missing. Run:  python -m pip install ib_async  (the Start Dashboard launcher does this), then restart.")
         raise SystemExit("The ib_async package is missing. Run:  python -m pip install ib_async   (see TA_SETUP.txt)")
-    ib = connect(IB, args.host, args.port, args.client_id)
+    ib = None
+    while ib is None:
+        check_parent(args)
+        ib = connect(IB, args.host, args.port, args.client_id)
+        if ib is None:
+            if args.once:
+                raise SystemExit("Could not connect to TWS or IB Gateway. See TA_SETUP.txt.")
+            time.sleep(10)
     last = {}
     held = {}
     try:
         while True:
+            check_parent(args)
+            if not ib.isConnected():
+                print("Lost the connection to TWS / IB Gateway; reconnecting")
+                status("waiting", "Lost the connection to TWS / IB Gateway; reconnecting")
+                try:
+                    ib.disconnect()
+                except Exception:  # noqa: BLE001
+                    pass
+                ib = None
+                while ib is None:
+                    check_parent(args)
+                    time.sleep(10)
+                    ib = connect(IB, args.host, args.port, args.client_id)
             now = time.time()
             for market in MARKETS:
                 try:
@@ -152,6 +200,7 @@ def run(args):
                             continue
                         write_atomic(os.path.join(OUT, f"{market}_{tf}.json"), to_payload(market, con.localSymbol, tf, bars, time.time()))
                         last[(market, tf)] = now
+                        status("connected", f"Connected; last update {market} {con.localSymbol} {tf}", updated=int(time.time()))
                         print(f"{time.strftime('%H:%M:%S')} {market} {con.localSymbol} {tf}: {len(bars)} bars")
                         ib.sleep(1.5)     # stay well inside IBKR pacing limits
                 except Exception as e:  # noqa: BLE001 - keep the feed alive
@@ -165,8 +214,9 @@ def run(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=0, help="API port; default tries 7497, 7496, 4002, 4001")
+    ap.add_argument("--host", default=os.environ.get("IBKR_HOST", "127.0.0.1"))
+    ap.add_argument("--parent", type=int, default=0, help=argparse.SUPPRESS)
+    ap.add_argument("--port", type=int, default=int(os.environ.get("IBKR_PORT") or 0), help="API port; default tries 7497, 7496, 4002, 4001")
     ap.add_argument("--client-id", type=int, default=17)
     ap.add_argument("--once", action="store_true", help="download everything once and exit")
     try:

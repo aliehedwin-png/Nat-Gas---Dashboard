@@ -12,7 +12,7 @@ Optional manual feeds / config (data/ directory):
   data/rigs.csv            date,gas,oil       extra/backfilled Baker Hughes weekly counts
   data/score_config.json   {"weights": {"wx_vs_normal": 20, "cftc": 0}}   see scoring.py
 """
-import calendar, csv, html, webbrowser, io, json, math, os, random, re, statistics, sys, threading, time
+import atexit, calendar, csv, html, subprocess, webbrowser, io, json, math, os, random, re, statistics, sys, threading, time
 import urllib.parse, urllib.request, zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
 
-VERSION = "2026-10-07.2"
+VERSION = "2026-10-07.3"
 KEY_SOURCE = "none"
 
 
@@ -946,6 +946,43 @@ def bars_signature():
 
 
 _ta_cache = {"sig": None, "ts": 0, "val": None}
+_feed = {"proc": None, "enabled": False}
+
+
+def start_feed():
+    """Start ibkr_feed.py (read-only IBKR bar feed) as a child of the dashboard, unless disabled with IBKR_FEED=0."""
+    if DEMO or os.environ.get("IBKR_FEED") == "0":
+        return
+    os.makedirs(DATA, exist_ok=True)
+    try:
+        os.remove(os.path.join(DATA, "ibkr_status.json"))
+    except OSError:
+        pass
+    log = open(os.path.join(DATA, "ibkr_feed.log"), "a")
+    try:
+        _feed["proc"] = subprocess.Popen([sys.executable, os.path.join(ROOT, "ibkr_feed.py"), "--parent", str(os.getpid())],
+                                         stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
+        _feed["enabled"] = True
+        atexit.register(lambda: _feed["proc"].terminate())
+    except OSError as e:
+        print("Could not start the IBKR feed:", e, file=sys.stderr)
+
+
+def feed_status():
+    """What the IBKR feed is doing right now, for the Technical tab."""
+    if not _feed["enabled"]:
+        return {"state": "off", "message": "IBKR feed is off (started with IBKR_FEED=0, or demo mode). Showing the bars that are on disk."}
+    p = _feed["proc"]
+    try:
+        with open(os.path.join(DATA, "ibkr_status.json")) as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        st = {"state": "starting", "message": "Starting the IBKR feed", "ts": int(time.time())}
+    if p is not None and p.poll() is not None and st.get("state") != "error":
+        st = {"state": "error", "message": "The IBKR feed stopped (see data/ibkr_feed.log). Restart the dashboard.", "ts": int(time.time())}
+    elif st.get("state") == "connected" and time.time() - st.get("ts", 0) > 20 * 60:
+        st = dict(st, state="stale", message="Connected, but no new bars for 20 minutes (market closed, or no NYMEX data on the account?).")
+    return st
 
 
 def api_ta():
@@ -953,7 +990,7 @@ def api_ta():
     sig = bars_signature()
     c = _ta_cache
     if c["val"] is not None and c["sig"] == sig and time.time() - c["ts"] < 20:
-        return c["val"]
+        return dict(c["val"], feed=feed_status())
     cfg = ta_engine.config(DATA)
     custom = load_json("events.json", [])
     out = {"markets": {}, "now": int(time.time()), "version": 1}
@@ -964,7 +1001,7 @@ def api_ta():
             out["markets"][mk] = {"market": mk, "error": "Technical analysis failed: %s" % e}
     out["config"] = {k: cfg[k] for k in ("min_r", "event_window_min", "zone_min_score_setup", "swing_n")}
     c.update(sig=sig, ts=time.time(), val=out)
-    return out
+    return dict(out, feed=feed_status())
 
 
 # ---------- Scores ----------
@@ -1121,6 +1158,7 @@ if __name__ == "__main__":
     if not EIA_KEY and not DEMO:
         print("\n*** No EIA key found yet. Open http://localhost:%d and paste the key into the box at the top of the page. ***\n" % port, file=sys.stderr)
     threading.Thread(target=warm_up, daemon=True).start()
+    start_feed()
     if os.environ.get("OPEN_BROWSER") == "1":  # set by the launchers; opens only after the server is really listening
         threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{port}")).start()
     print(f"\nOpen this address in your browser:  http://localhost:{port}   (leave this window open)\n", file=sys.stderr)
