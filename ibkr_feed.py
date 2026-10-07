@@ -118,6 +118,8 @@ def fetch_bars(ib, contract, size, duration):
     out = []
     for b in hist:
         d = b.date
+        if not isinstance(d, datetime) and isinstance(d, date):     # daily bars come as a plain date
+            d = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
         ts = int(d.timestamp()) if hasattr(d, "timestamp") else int(d)
         out.append((ts, float(b.open), float(b.high), float(b.low), float(b.close), float(b.volume)))
     return out

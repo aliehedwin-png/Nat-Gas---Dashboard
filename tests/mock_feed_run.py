@@ -19,6 +19,8 @@ class IB:
         m = fut.k["symbol"]; return [CD(Con(m, "20261028", m + "X6")), CD(Con(m, "20261125", m + "Z6"))]
     def reqHistoricalData(s, c, **k):
         base = datetime(2026, 10, 5, tzinfo=timezone.utc)
+        if k["barSizeSetting"] == "1 day":      # real ib_async returns a plain date for daily bars
+            return [Bar((base - timedelta(days=80 - i)).date(), 3.0, 3.1, 2.9, 3.05, 100) for i in range(80)]
         return [Bar(base + timedelta(minutes=15 * i), 3.0, 3.1, 2.9, 3.05, 100) for i in range(80)]
     def sleep(s, x): pass
     def disconnect(s): pass
@@ -30,4 +32,5 @@ with tempfile.TemporaryDirectory() as d:
     names = sorted(os.listdir(d)); print(names)
     assert len(names) == 8, names
     j = json.load(open(os.path.join(d, "NG_4H.json"))); assert j["contract"] == "NGX6" and len(j["time"]) == 80 and j["source"] == "ibkr-feed"
+    j = json.load(open(os.path.join(d, "CL_1D.json"))); assert len(j["time"]) == 80 and j["time"][-1] == "2026-10-04T00:00:00Z", j["time"][-1]
 print("mock feed ok")
