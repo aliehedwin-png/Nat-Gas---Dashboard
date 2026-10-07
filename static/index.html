@@ -569,7 +569,7 @@ function paintTA(){
   $('taAlerts').innerHTML=(m.alerts||[]).length?`<table class="t"><tbody>${m.alerts.map(x=>`<tr><td>${lt(x.t,{hour:'numeric',minute:'2-digit',month:'short',day:'numeric'})}</td><td><span class="chip">${x.priority}</span> <b>${x.type}</b> (${x.tf})<br><span style="color:var(--mute)">${esc(x.text)}</span>${x.blocked?'<br><span class="dn">not sent: event window</span>':''}</td></tr>`).join('')}</tbody></table>`:'<div style="color:var(--mute);font-size:12px">Nothing triggered on the latest closed bars: no setup, level break, bias change or volatility spike.</div>';
   $('taEvSub').textContent=m.event_window?'An event window is active now.':'No setup alerts in the '+TA.config.event_window_min+' minutes either side of these.';
   $('taEvents').innerHTML=`<table class="t"><tbody>${(m.events||[]).map(e=>`<tr><td><b>${esc(e.name)}</b></td><td>${lt(e.ts,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td style="color:var(--mute)">in ${ago(e.ts-now)}</td></tr>`).join('')}</tbody></table>`}
-setInterval(refreshTA,30000);
+setInterval(refreshTA,10000);   // the IBKR feed fetches each bar about 10 s after it closes
 {let w='fund';try{w=localStorage.getItem('ngTab')||'fund'}catch(e){}showPane(w==='ta'?'ta':'fund');if(w!=='ta')refreshTA()}
 
 paintAlertBtn();scheduler();setInterval(scheduler,1000);

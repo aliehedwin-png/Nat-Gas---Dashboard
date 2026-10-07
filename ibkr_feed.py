@@ -12,22 +12,37 @@ import json
 import os
 import sys
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "data", "bars")
 
-# bar size, history length, how often to refresh (seconds). Separate native bars per timeframe, never aggregated.
+# bar size, history length, refresh interval (s), close check (s). Separate native bars per timeframe, never aggregated.
+# Each timeframe is downloaded again CLOSE_DELAY seconds after every close check boundary, so a just-closed bar reaches the
+# analysis within seconds; the interval refreshes the still-forming bar in between. 4H and daily bars close on a whole hour
+# (session based), so an hourly check catches every close without computing session times.
+# About 40 history requests per 10 minutes, inside IBKR's limit of 60.
 TFS = {
-    "15m": ("15 mins", "5 D", 300),
-    "1H": ("1 hour", "30 D", 300),
-    "4H": ("4 hours", "120 D", 1800),
-    "1D": ("1 day", "1 Y", 1800),
+    "15m": ("15 mins", "5 D", 60, 900),
+    "1H": ("1 hour", "30 D", 120, 3600),
+    "4H": ("4 hours", "120 D", 600, 3600),
+    "1D": ("1 day", "1 Y", 600, 3600),
 }
+CLOSE_DELAY = 10        # seconds after a bar closes before it is fetched, so IBKR has the final trades
+LOOP = 5                # seconds between schedule checks
+ERROR_PAUSE = 60        # seconds to leave a market alone after an error, to stay inside IBKR pacing limits
 MARKETS = {"NG": "NYMEX", "CL": "NYMEX"}
 PORTS = [7497, 7496, 4002, 4001]      # TWS paper, TWS live, Gateway paper, Gateway live
 ROLL_DAYS = 7                           # about 5 trading days before the last trade date
 ROLL_SESSIONS = 2                       # next month busier than front month for 2 sessions in a row
+
+
+def due(now, last, every, close_every):
+    """True when a timeframe needs downloading: its refresh interval has passed, or a bar has closed since the last download."""
+    if now - last >= every:
+        return True
+    closed_at = (now - CLOSE_DELAY) // close_every * close_every + CLOSE_DELAY    # latest close boundary + delay, <= now
+    return last < closed_at
 
 
 def parse_last_trade(s):
@@ -118,8 +133,10 @@ def fetch_bars(ib, contract, size, duration):
     out = []
     for b in hist:
         d = b.date
-        if not isinstance(d, datetime) and isinstance(d, date):     # daily bars come as a plain date
-            d = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+        if not isinstance(d, datetime) and isinstance(d, date):
+            # daily bars come as a plain trade date; stamp them at the session open, 22:00 UTC the evening before (17:00 CT),
+            # like the other timeframes and sample_bars/, so the closed-bar check knows when each one ends
+            d = datetime(d.year, d.month, d.day, tzinfo=timezone.utc) - timedelta(hours=2)
         ts = int(d.timestamp()) if hasattr(d, "timestamp") else int(d)
         out.append((ts, float(b.open), float(b.high), float(b.low), float(b.close), float(b.volume)))
     return out
@@ -183,6 +200,8 @@ def run(args):
                     ib = connect(IB, args.host, args.port, args.client_id)
             now = time.time()
             for market in MARKETS:
+                if now - last.get((market, "error"), 0) < ERROR_PAUSE:
+                    continue
                 try:
                     con = held.get(market)
                     if con is None or now - last.get((market, "pick"), 0) > 3600:
@@ -193,23 +212,27 @@ def run(args):
                                 del last[k]
                         held[market], con = new, new
                         last[(market, "pick")] = now
-                    for tf, (size, dur, every) in TFS.items():
-                        if now - last.get((market, tf), 0) < every:
+                    for tf, (size, dur, every, close_every) in TFS.items():
+                        if not due(time.time(), last.get((market, tf), 0), every, close_every):
                             continue
+                        start = time.time()
                         bars = fetch_bars(ib, con, size, dur)
                         if not valid(bars):
                             print(f"{market} {tf}: bad or empty data, kept the old file")
+                            last[(market, tf)] = start
                             continue
-                        write_atomic(os.path.join(OUT, f"{market}_{tf}.json"), to_payload(market, con.localSymbol, tf, bars, time.time()))
-                        last[(market, tf)] = now
+                        # stamped with the request time, so a bar that closed while the request ran is not counted as closed
+                        write_atomic(os.path.join(OUT, f"{market}_{tf}.json"), to_payload(market, con.localSymbol, tf, bars, start))
+                        last[(market, tf)] = start
                         status("connected", f"Connected; last update {market} {con.localSymbol} {tf}", updated=int(time.time()))
                         print(f"{time.strftime('%H:%M:%S')} {market} {con.localSymbol} {tf}: {len(bars)} bars")
                         ib.sleep(1.5)     # stay well inside IBKR pacing limits
                 except Exception as e:  # noqa: BLE001 - keep the feed alive
                     print(f"{market}: {e}")
+                    last[(market, "error")] = now
             if args.once:
                 break
-            ib.sleep(15)
+            ib.sleep(LOOP)
     finally:
         ib.disconnect()
 

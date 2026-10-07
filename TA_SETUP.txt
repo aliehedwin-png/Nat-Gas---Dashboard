@@ -33,7 +33,9 @@ EVERY DAY
 WHAT IT DOES
  - Finds the active NG and CL contract (front month; rolls to the next month when it trades more volume for 2 sessions
    in a row, or 7 days before the last trade date). The contract is shown on the tab.
- - Downloads separate native bars for 15m, 1H, 4H and Daily, refreshing 15m/1H every 5 minutes and 4H/Daily every 30.
+ - Downloads separate native bars for 15m, 1H, 4H and Daily. Each bar is downloaded again about 10 seconds after it closes,
+   so the analysis (which uses closed bars only) sees it within about 20 seconds. In between, the still-forming bar is
+   refreshed every 1 minute (15m), 2 minutes (1H) and 10 minutes (4H, Daily). This stays inside IBKR's request limits.
  - On a roll it rebuilds every timeframe so levels are never mixed across contracts.
  - Writes data/bars/NG_15m.json etc. If IBKR sends bad data it keeps the previous file.
 

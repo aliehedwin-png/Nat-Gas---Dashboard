@@ -43,5 +43,26 @@ class Closed(unittest.TestCase):
         self.assertEqual(len(t.closed_only(bars, "1D", t.iso_to_ts("2026-10-06T20:30:00Z"))["t"]), 1)  # still open: forming bar dropped
 
 
+class Schedule(unittest.TestCase):
+    def test_due(self):
+        T = 1791400000 // 900 * 900                     # a 15m boundary
+        self.assertFalse(f.due(T - 30, T - 60, 60, 900))       # 30 s since the last download, no close in between
+        self.assertTrue(f.due(T - 30, T - 95, 60, 900))        # refresh interval passed
+        self.assertFalse(f.due(T + 5, T - 40, 60, 900))        # bar closed, but wait CLOSE_DELAY for the final trades
+        self.assertTrue(f.due(T + 10, T - 40, 60, 900))        # 10 s after the close: fetch now, not at the next interval
+        self.assertFalse(f.due(T + 15, T + 10, 60, 900))       # already fetched after this close
+        H = T // 3600 * 3600 + 3600                            # hourly check for 4H / Daily closes
+        self.assertTrue(f.due(H + 12, H - 300, 600, 3600))
+        self.assertFalse(f.due(H - 100, H - 400, 600, 3600))
+
+    def test_daily_dates_stamped_at_session_open(self):
+        from datetime import date as D
+        class B:
+            date, open, high, low, close, volume = D(2026, 10, 6), 1, 2, 0.5, 1.5, 10
+        class IB:
+            def reqHistoricalData(self, *a, **k): return [B()]
+        self.assertEqual(f.iso(f.fetch_bars(IB(), None, "1 day", "1 Y")[0][0]), "2026-10-05T22:00:00Z")
+
+
 if __name__ == "__main__":
     unittest.main()

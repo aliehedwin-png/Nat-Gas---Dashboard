@@ -20,6 +20,11 @@ OUT = os.path.join(feed.HERE, "data", "history")
 DURATIONS = ["20 Y", "15 Y", "10 Y", "5 Y", "2 Y"]   # longest first; IBKR refuses what it does not have
 
 
+def trade_date(ts):
+    """fetch_bars stamps a daily bar at its session open (22:00 UTC the evening before); the CSV shows the trade date."""
+    return datetime.fromtimestamp(ts + 2 * 3600, timezone.utc).strftime("%Y-%m-%d")
+
+
 def export(ib, ContFuture, market):
     con = ContFuture(symbol=market, exchange=feed.MARKETS[market], currency="USD")
     ib.qualifyContracts(con)
@@ -42,9 +47,8 @@ def export(ib, ContFuture, market):
         w = csv.writer(f)
         w.writerow(["date", "open", "high", "low", "close", "volume"])
         for ts, o, h, l, c, v in bars:
-            w.writerow([datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d"), o, h, l, c, v])
-    first = datetime.fromtimestamp(bars[0][0], timezone.utc).date()
-    lastd = datetime.fromtimestamp(bars[-1][0], timezone.utc).date()
+            w.writerow([trade_date(ts), o, h, l, c, v])
+    first, lastd = trade_date(bars[0][0]), trade_date(bars[-1][0])
     print(f"{market}: {len(bars)} daily bars, {first} to {lastd} ({dur} requested) -> {path}")
     return path
 

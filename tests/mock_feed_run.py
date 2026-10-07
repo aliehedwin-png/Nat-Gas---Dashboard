@@ -32,5 +32,5 @@ with tempfile.TemporaryDirectory() as d:
     names = sorted(os.listdir(d)); print(names)
     assert len(names) == 8, names
     j = json.load(open(os.path.join(d, "NG_4H.json"))); assert j["contract"] == "NGX6" and len(j["time"]) == 80 and j["source"] == "ibkr-feed"
-    j = json.load(open(os.path.join(d, "CL_1D.json"))); assert len(j["time"]) == 80 and j["time"][-1] == "2026-10-04T00:00:00Z", j["time"][-1]
+    j = json.load(open(os.path.join(d, "CL_1D.json"))); assert len(j["time"]) == 80 and j["time"][-1] == "2026-10-03T22:00:00Z", j["time"][-1]
 print("mock feed ok")
