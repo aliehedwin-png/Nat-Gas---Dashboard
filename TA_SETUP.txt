@@ -44,6 +44,12 @@ IF SOMETHING GOES WRONG
  - The tab warns "data is old" or the IBKR line says stopped: check data/ibkr_feed.log, then restart the dashboard.
  - IBKR allows one login per username at a time; logging in on your phone can disconnect TWS.
 
+LONG HISTORY FOR BACKTESTS (one time)
+ With TWS logged in, open a command window in this folder and run:   python history_export.py
+ (Windows: if "python" is not found, use  py -3 history_export.py). It is read-only and can run while the dashboard is open.
+ It saves IBKR's continuous daily bars for NG and CL (up to 20 years) to data/history/NG_daily_contfut.csv and
+ CL_daily_contfut.csv. Send those two files to Claude for the backtests.
+
 NOT INCLUDED YET
  Email or Telegram alerts, Claude-written commentary, the daily brief, the backtester and the trade journal.
  Alerts appear on the Technical tab and as browser notifications while the page is open.
