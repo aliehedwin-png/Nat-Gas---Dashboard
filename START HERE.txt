@@ -1,0 +1,12 @@
+NATURAL GAS & CRUDE DASHBOARD - START HERE
+
+1. Python must be installed (python.org; on Windows tick "Add python.exe to PATH").
+2. Log in to TWS or IB Gateway (API enabled, Read-Only API ticked; see TA_SETUP.txt).
+3. Double-click "Start Dashboard (Windows).bat" (Mac: "Start Dashboard (Mac).command").
+   The browser opens http://localhost:8000 by itself. Leave the black window open.
+   The dashboard starts the read-only IBKR feed itself. Do NOT also run an old "Start IBKR Feed" file:
+   two feeds use the same IBKR connection id and block each other.
+
+Your EIA key is already in the .env file in this folder.
+Long history for backtests (one time): with TWS logged in, run  python history_export.py  in this folder
+and send data\history\NG_daily_contfut.csv and CL_daily_contfut.csv to Claude.
