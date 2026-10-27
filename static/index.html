@@ -51,7 +51,7 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
 .note{font-size:11px;color:var(--mute);padding:0 16px 20px}
 </style></head><body>
 <header><h1>Natural Gas — Fundamentals Dashboard</h1><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="al" id="keyLink" title="Set or change your EIA key" style="display:none">EIA key</button><div id="status">loading… first start can take a minute</div></div></header>
-<nav class="tabbar"><button id="tabFund" class="on">Fundamentals</button><button id="tabTa">Technical (NG &amp; CL)</button></nav>
+<nav class="tabbar"><button id="tabFund" class="on">Fundamentals</button><button id="tabTa">Technical (NG &amp; CL)</button><button id="tabNews">News (CL &amp; NG)</button></nav>
 <div id="nosrv" style="display:none;background:var(--card);border-bottom:2px solid var(--dn);padding:14px 16px;line-height:1.5">
  <b class="dn">This page is not connected to the dashboard program.</b><br>
  Start the program first: <b>Windows</b>: double-click <i>Start Dashboard (Windows).bat</i>. <b>Mac</b>: open <i>Start Dashboard (Mac).command</i>. Leave its window open, then go to <b>http://localhost:8000</b> in your browser.
@@ -118,6 +118,11 @@ button.al{background:none;border:1px solid var(--line);color:var(--text);border-
  <div class="card"><h2>Tropical watch (NHC) <span data-s="hurricane"></span></h2><div class="sub" id="trsub"></div><div id="trTab"></div></div>
 </div>
 <div class="note">Scores are transparent rule-based heuristics (−2 strongly bearish … +2 strongly bullish for price), not forecasts. Hover a badge for the reasoning. Weights and thresholds: scoring.py, data/score_config.json. Not investment advice.</div>
+</div>
+<div id="pane-news" style="display:none">
+ <div class="tabs2"><div class="seg" id="nwSeg"><button data-n="all" class="on">All</button><button data-n="CL">Crude oil</button><button data-n="NG">Natural gas</button><button data-n="urgent">Important</button></div><span id="nwSub" style="color:var(--mute);font-size:12px"></span></div>
+ <div class="grid" style="padding-top:12px"><div class="card wide"><div id="nwList">Loading…</div></div></div>
+ <div class="note">Headlines from Google News, OilPrice.com, Rigzone, NGI, FXEmpire and IBKR's free news (when TWS is running), kept only if they are about crude oil or natural gas. The bullish / bearish tag is a keyword guess, not a forecast. Information only: nothing here places trades. Pop-ups come from the "News alerts" window; start it with <i>Run News Alerts (Windows).bat</i>.</div>
 </div>
 <div id="pane-ta" style="display:none">
  <div class="tabs2"><div class="seg" id="mkSeg"><button data-m="NG" class="on">NG</button><button data-m="CL">CL</button></div>
@@ -453,11 +458,11 @@ $('keyBtn').onclick=async()=>{const m=$('keyMsg');m.textContent='Checking the ke
 let TA=null,taMkt='NG',taTf='4H',taSeen=null;
 const TF_LABEL={'15m':'15m','1H':'1H','4H':'4H','1D':'Daily'},TF_ORDER=['15m','1H','4H','1D'];
 function showPane(which){
-  $('pane-fund').style.display=which==='fund'?'':'none';$('pane-ta').style.display=which==='ta'?'':'none';
-  $('tabFund').classList.toggle('on',which==='fund');$('tabTa').classList.toggle('on',which==='ta');
+  $('pane-fund').style.display=which==='fund'?'':'none';$('pane-ta').style.display=which==='ta'?'':'none';$('pane-news').style.display=which==='news'?'':'none';
+  $('tabFund').classList.toggle('on',which==='fund');$('tabTa').classList.toggle('on',which==='ta');$('tabNews').classList.toggle('on',which==='news');
   try{localStorage.setItem('ngTab',which)}catch(e){}
-  if(which==='ta')refreshTA()}
-$('tabFund').onclick=()=>showPane('fund');$('tabTa').onclick=()=>showPane('ta');
+  if(which==='ta')refreshTA();if(which==='news')refreshNews()}
+$('tabFund').onclick=()=>showPane('fund');$('tabTa').onclick=()=>showPane('ta');$('tabNews').onclick=()=>showPane('news');
 $('mkSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;taMkt=b.dataset.m;[...$('mkSeg').children].forEach(x=>x.classList.toggle('on',x===b));paintTA()};
 $('tfSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;taTf=b.dataset.t;[...$('tfSeg').children].forEach(x=>x.classList.toggle('on',x===b));paintTA()};
 const ago=s=>{s=Math.max(0,Math.round(s));return s<90?s+'s':s<5400?Math.round(s/60)+' min':s<172800?(s/3600).toFixed(1)+' h':Math.round(s/86400)+' days'};
@@ -570,7 +575,23 @@ function paintTA(){
   $('taEvSub').textContent=m.event_window?'An event window is active now.':'No setup alerts in the '+TA.config.event_window_min+' minutes either side of these.';
   $('taEvents').innerHTML=`<table class="t"><tbody>${(m.events||[]).map(e=>`<tr><td><b>${esc(e.name)}</b></td><td>${lt(e.ts,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td style="color:var(--mute)">in ${ago(e.ts-now)}</td></tr>`).join('')}</tbody></table>`}
 setInterval(refreshTA,10000);   // the IBKR feed fetches each bar about 10 s after it closes
-{let w='fund';try{w=localStorage.getItem('ngTab')||'fund'}catch(e){}showPane(w==='ta'?'ta':'fund');if(w!=='ta')refreshTA()}
+// ---------- News tab (CL / NG headlines from news_alerts.py; information only) ----------
+let NEWS=null,nwFilter='all';
+async function refreshNews(){try{const r=await fetch('/api/news');NEWS=await r.json()}catch(e){NEWS={error:String(e)}}paintNews()}
+function paintNews(){
+  if(!NEWS)return;
+  const st=NEWS.status||{},items=(NEWS.items||[]).filter(x=>nwFilter==='all'||(nwFilter==='urgent'?x.urgent:(x.markets||[]).includes(nwFilter)));
+  const age=st.ts?Date.now()/1000-st.ts:null;
+  $('nwSub').innerHTML=NEWS.error?`<span class="dn">${esc(NEWS.error)}</span>`:!st.ts?'<span class="dn">The news checker has not run yet. Start <i>Run News Alerts (Windows).bat</i>.</span>':
+    `Last check ${ago(age)} ago, ${st.ok}/${st.total} sources ok`+(age>900?' <span class="dn">(the news checker looks stopped)</span>':'')+
+    (st.sources&&st.sources['IBKR news']?` · IBKR: ${esc(st.sources['IBKR news'].note||'')}`:'');
+  $('nwList').innerHTML=items.length?`<table class="t"><tbody>${items.slice(0,150).map(x=>`<tr><td style="white-space:nowrap">${lt(x.ts)}</td>
+    <td>${(x.markets||[]).map(m=>`<span class="chip">${m}</span>`).join('')}<span class="bd ${x.bias==='bullish'?'bull':x.bias==='bearish'?'bear':'neu'}">${x.bias}</span>${x.urgent?' <b>!</b>':''}</td>
+    <td>${x.link?`<a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title)}</a>`:esc(x.title)}<br><span style="color:var(--mute)">${esc(x.source)}${(x.topics||[]).length?' · '+x.topics.map(esc).join(', '):''}</span></td></tr>`).join('')}</tbody></table>`:
+    '<span style="color:var(--mute)">No headlines yet.</span>'}
+$('nwSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;nwFilter=b.dataset.n;[...$('nwSeg').children].forEach(x=>x.classList.toggle('on',x===b));paintNews()};
+setInterval(()=>{if($('pane-news').style.display!=='none')refreshNews()},60000);
+{let w='fund';try{w=localStorage.getItem('ngTab')||'fund'}catch(e){}showPane(['ta','news'].includes(w)?w:'fund');if(w!=='ta')refreshTA()}
 
 paintAlertBtn();scheduler();setInterval(scheduler,1000);
 refresh();setInterval(refresh,300000);

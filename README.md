@@ -97,3 +97,12 @@ The page asks the program for its status first (instant) and draws the key box a
 - `rigcount.bakerhughes.com` stalls/403s most client User-Agents but serves curl's, so that one host is fetched with a curl User-Agent.
 - Not available for free: daily production, pipeline flows, daily LNG feedgas (drop a CSV into `data/lng_feedgas.csv`), and price/basis/spread data (removed by request).
 - Not investment advice.
+
+## News alerts (CL and NG, information only)
+
+`news_alerts.py` checks Google News, OilPrice.com, Rigzone, NGI, FXEmpire and, when TWS or IB Gateway is running, IBKR's free
+news providers (read-only, client id 23) every 5 minutes. It keeps only crude oil and natural gas headlines, tags them by topic
+(EIA, OPEC+, Middle East / Hormuz, weather, LNG, ...) with a keyword bullish / bearish guess, writes `data/news/news.json` for
+the dashboard's **News** tab and pops up a Windows notification for important headlines (at most one every 90 s, 12 an hour).
+It also reminds you 5 minutes before the EIA crude (Wed 10:30 ET) and natural gas storage (Thu 10:30 ET) reports.
+Start it with `Run News Alerts (Windows).bat` (restarts itself if it stops). It never places or changes trades.

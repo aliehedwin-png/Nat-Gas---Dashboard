@@ -1017,9 +1017,24 @@ def api_scores():
     return scoring.compute(d, load_json("score_config.json", {}))
 
 
+def api_news():
+    """Headlines written by news_alerts.py (a separate process), plus its status."""
+    news = load_file(os.path.join(DATA, "news", "news.json"), {"items": []})
+    return {"items": news.get("items", []), "updated": news.get("updated"),
+            "status": load_file(os.path.join(DATA, "news", "status.json"), {})}
+
+
+def load_file(path, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
 ROUTES = {"/api/storage": api_storage, "/api/fundamentals": api_fundamentals, "/api/power": api_power,
           "/api/cftc": api_cftc, "/api/rigs": api_rigs, "/api/lng": api_lng, "/api/weather": api_weather,
-          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/dry": api_dry, "/api/ta": api_ta, "/api/scores": api_scores}
+          "/api/prodwx": api_prodwx, "/api/tropics": api_tropics, "/api/steo": api_steo, "/api/ngwu": api_ngwu, "/api/dry": api_dry, "/api/ta": api_ta, "/api/scores": api_scores, "/api/news": api_news}
 CACHE_KEYS = {"/api/storage": ("storage", "storage_regions"), "/api/fundamentals": ("fund_spot", "fund_production", "fund_lng_exports", "fund_mexico_exports"), "/api/power": ("power", "nuclear"),
               "/api/cftc": "cftc", "/api/rigs": "rigs", "/api/lng": "lng", "/api/weather": "weather",
               "/api/prodwx": "prodwx", "/api/tropics": "tropics", "/api/steo": "steo", "/api/ngwu": "ngwu", "/api/dry": "dry", "/api/ta": ()}
