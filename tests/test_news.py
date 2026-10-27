@@ -45,6 +45,12 @@ class News(unittest.TestCase):
         self.assertEqual(n.classify("US LNG feedgas hits record")["markets"], ["NG"])
         self.assertEqual(n.classify("Oil prices steady ahead of data")["bias"], "neutral")
 
+    def test_names_and_deescalation(self):
+        self.assertIsNone(n.classify("Brent Taylor addresses allegations days before election"))
+        self.assertEqual(n.classify("Brent crude slips below $115")["markets"], ["CL"])
+        self.assertEqual(n.classify("Oil down 2% on Iran war de-escalation hopes")["bias"], "bearish")
+        self.assertFalse(n.classify("Oil steady on de-escalation hopes")["urgent"])
+
     def test_no_false_ease(self):
         self.assertEqual(n.classify("Oil lease sale planned in Alaska")["bias"], "neutral")
 

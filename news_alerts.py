@@ -46,7 +46,7 @@ def gnews(q):
 
 
 FEEDS = {
-    "Google News: crude oil": gnews('"crude oil" OR WTI OR Brent'),
+    "Google News: crude oil": gnews('"crude oil" OR "oil prices" OR "WTI crude" OR "Brent crude"'),
     "Google News: OPEC+": gnews("OPEC"),
     "Google News: oil supply Middle East": gnews("oil Hormuz OR Iran OR Saudi OR Houthi OR tanker"),
     "Google News: EIA inventories": gnews("EIA crude inventories OR \"natural gas storage\" OR \"API crude\""),
@@ -61,7 +61,7 @@ FEEDS = {
 
 # A headline must mention its market to be kept.
 MARKET_WORDS = {
-    "CL": r"crude|\boil\b|oil price|\bwti\b|brent|opec|petroleum|gasoline|distillate|refiner|barrel|\bbpd\b|tanker|shale",
+    "CL": r"crude|\boil\b|oil price|\bwti\b|brent (crude|oil|futures|price)|opec|petroleum|gasoline|distillate|refiner|barrel|\bbpd\b|tanker|shale",
     "NG": r"natural gas|nat ?gas|\blng\b|henry hub|gas storage|gas prices|feedgas|\bbcf\b|ttf\b|gas futures|gas inventor",
 }
 TOPICS = {
@@ -76,12 +76,12 @@ TOPICS = {
     "Demand / macro": r"china|demand|recession|tariff|fed\b|rate cut|economy|imports",
 }
 # Words that usually push price up / down. The guess is a keyword count, not a forecast.
-UP = (r"cut|outage|disrupt|attack|strike|draw|deficit|shortage|sanction|cold|freeze|frigid|heat ?wave|hurricane|"
-      r"explosion|fire\b|shut|halt|force majeure|seiz|escalat|surge|jump|rally|soar|record demand|tighten|lower output|below expect")
+UP = (r"cut|outage|disrupt|attack|strike|\bdraw|deficit|shortage|sanction|cold|freeze|frigid|heat ?wave|hurricane|"
+      r"explosion|fire\b|shut|halt|force majeure|seiz|(?<!de-)(?<!de)escalat|surge|jump|rally|soar|record demand|tighten|lower output|below expect")
 DOWN = (r"\bbuild\b|surplus|glut|oversuppl|ceasefire|truce|peace|mild|warm|output (hike|increase|rise)|raise output|boost output|"
-        r"increase production|record (output|production)|weak demand|slump|plunge|tumble|drop|\bfall|slide|above expect|larger than expected injection|resume|restart|\bease")
+        r"de-?escalat|feedgas cut|increase production|record (output|production)|weak demand|slump|plunge|tumble|drop|\bfall|slide|above expect|larger than expected injection|resume|restart|\bease")
 # A headline with one of these words is important enough for a pop-up.
-URGENT = (r"opec|hormuz|attack|explosion|force majeure|outage|shut|halt|seiz|hurricane|sanction|ceasefire|escalat|missile|drone|"
+URGENT = (r"opec|hormuz|attack|explosion|force majeure|outage|shut|halt|seiz|hurricane|sanction|ceasefire|(?<!de-)(?<!de)escalat|missile|drone|"
           r"strike on|eia (report|data)|inventor(y|ies) (build|draw|rose|fell)|storage (build|injection|report)|surprise|emergency|"
           r"spr\b|strategic petroleum|plunge|soar|surge|limit (up|down)|freeport")
 BAD_SOURCE = r"\b(seeking alpha premium|subscribe|podcast)\b"
@@ -356,10 +356,20 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     ibkr = None if args.no_ibkr else Ibkr()
     stored = load(NEWS, {"items": []})
+    kept = []
+    for it in stored["items"]:   # re-check stored headlines so filter changes apply to them too
+        c = classify(it["title"], it.get("summary", "")) or (it.get("hint") and classify(it["title"] + (" crude oil" if it["hint"] == "CL" else " natural gas")))
+        if c:
+            kept.append(dict(it, **c))
+    stored["items"] = kept
     first = not os.path.exists(SEEN)
     state = {"seen": load(SEEN, {}), "sources": {}}
     pending, last_pop, pops, reminded = [], 0, [], ""
     print("CL / NG news alerts (information only, no trading). Checking every", args.every, "s. Close this window to stop.")
+    mtime = os.path.getmtime(__file__)
+    if not args.once and not args.no_popups:
+        popup("CL / NG news alerts are running", ["Important crude oil and natural gas headlines will pop up here.",
+                                                 "All headlines: dashboard News tab."])
     while True:
         now = time.time()
         try:
@@ -402,6 +412,9 @@ def main():
         # wake every minute so report reminders are on time; fetch news every args.every seconds
         nxt = now + args.every
         while time.time() < nxt:
+            if os.path.getmtime(__file__) != mtime:   # updated code: exit so the .bat restarts it with the new version
+                print("news_alerts.py was updated; restarting.")
+                return
             time.sleep(min(60, max(1, nxt - time.time())))
             rem = report_reminder(datetime.now(timezone.utc))
             if rem and rem != reminded and not args.no_popups:
